@@ -260,9 +260,9 @@
       '<div class="tile"><span>부가세 (10%, 원 미만 절사)</span><b id="tVat">0</b><em>세금계산서 세액</em></div>' +
       '<div class="tile"><span>총 정산액</span><b id="tGross">0</b><em>실지급액</em></div></div>' +
       '<div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div>' +
-      '<div class="flags" id="flags"></div></section>' +
+      '<details class="fold vfold"><summary>검증 상세</summary><div class="flags" id="flags"></div></details></section>' +
       '<section class="panel"><div class="ph"><h2>정산 대상 행</h2><p>회계팀 "매출 정리" 시트 기준입니다. 애드센스·유튜브는 쉐어 대상이 아니고, 이미 정산한 행과 판매월이 계약 종료 기준(' + esc(T.cutoff || '') + ') 이후인 행은 자동으로 뺐습니다. 체크를 바꾸면 즉시 다시 계산합니다.</p></div>' +
-      '<div class="tablebox"><table id="rowTable"></table></div></section>' +
+      '<div class="tablebox rows rows-tk"><table id="rowTable"></table></div></section>' +
       '<details class="panel fold logic"><summary><b>적용 중인 정산 로직</b> <span class="small muted">25.4Q-26.2Q 매입품의·세금계산서, 인수인계 기준</span></summary><ol>' +
       '<li><b>대상</b>: 회계팀 음원 매출 중 애드센스·유튜브(Google) 제외, 판매월이 계약 종료 기준 월까지인 행만. 기간이 걸치는 분기 매출은 체크 후 확인합니다.</li>' +
       '<li><b>실매출</b>: 매출 합계 − 원천세 합계. <b>매입금액</b> = 실매출 × 부속합의서 쉐어율(원 단위 반올림).</li>' +
@@ -451,8 +451,8 @@
       '<label>OST MERCH 제조원가 제외 매출 (KRW)<input id="inMn" inputmode="numeric"></label></div>' +
       '<div class="row"><label class="btn sm" for="mdFile">MD 관련 수불부 올리기 (OST MERCH 자동 입력)</label><input type="file" id="mdFile" accept=".xlsx,.xls" hidden><span class="small muted" id="fxNote"></span><span class="small muted" id="mdNote"></span></div>' +
       '<p class="small muted" style="margin:0">환율: <a href="http://www.smbs.biz/ExRate/StdExRate.jsp" target="_blank" rel="noopener">서울외국환중개 매매기준율</a> 반기 말일(6/30·12/31) 기준. OST MERCH: 테이크원 MD 관련 수불부 "OST 패키지" 월별 금액의 반기 합계(매출추이 시트 OST MERCH 총이익 행과 동일).</p></section>' +
-      '<section class="panel dash"><div class="tiles" id="tiles"></div><div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div><div class="flags" id="flags"></div></section>' +
-      '<section class="panel"><div class="ph"><h2>음원 매출 대상 행</h2><p>회계일자가 정산 반기 안인 행(애드센스·유튜브 제외)입니다. DB 누적 원장과 이번 파일을 합쳐서 봅니다.</p></div><div class="tablebox"><table id="rowTable"></table></div></section>' +
+      '<section class="panel dash"><div class="tiles" id="tiles"></div><div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div><details class="fold vfold"><summary>검증 상세</summary><div class="flags" id="flags"></div></details></section>' +
+      '<section class="panel"><div class="ph"><h2>음원 매출 대상 행</h2><p>회계일자가 정산 반기 안인 행(애드센스·유튜브 제외)입니다. DB 누적 원장과 이번 파일을 합쳐서 봅니다.</p></div><div class="tablebox rows rows-wr"><table id="rowTable"></table></div></section>' +
       '<details class="panel fold logic"><summary><b>적용 중인 정산 로직</b> <span class="small muted">26년 상반기 작가 배분 매입품의·인보이스·ERP 화면 기준</span></summary><ol>' +
       '<li><b>음원</b>: 반기 회계일자 행의 (매출 − 원천세) × 작가별 요율(원 단위 반올림).</li>' +
       '<li><b>OST MERCH</b>: 제조원가 제외 매출 × YG 수익배분율(원 단위 반올림) × 작가별 요율.</li>' +
@@ -475,7 +475,7 @@
       '<div class="block"><header><h3>작가별 입력값</h3><button class="btn sm" data-copy="erpTable">표 복사</button></header><div class="body"><div class="tablebox"><table id="erpTable"></table></div></div></div></section></div>';
 
     var halves = []; for (var y = S.y + 1; y >= 2024; y--) { halves.push([y, 2], [y, 1]); }
-    $('inHalf').innerHTML = halves.map(function (x) { var h = TG.half(x[0], x[1]); return '<option value="' + x[0] + '-' + x[1] + '"' + (x[0] === S.y && x[1] === S.h ? ' selected' : '') + '>' + h.kor + ' (' + h.from + ' ~ ' + h.to + ')</option>'; }).join('');
+    $('inHalf').innerHTML = halves.map(function (x) { var h = TG.half(x[0], x[1]); return '<option value="' + x[0] + '-' + x[1] + '"' + (x[0] === S.y && x[1] === S.h ? ' selected' : '') + '>' + h.kor + ' (' + h.from.slice(5).replace('-', '.') + '~' + h.to.slice(5).replace('-', '.') + ')</option>'; }).join('');
     function syncInputs() {
       $('inFx').value = S.fx; $('inFx').classList.toggle('need', !S.fx); $('inMs').value = S.merchSales; $('inMn').value = S.merchNet; $('inTx').value = S.tx;
       $('fxNote').textContent = S.fxNote ? '환율: ' + S.fxNote : ''; $('mdNote').textContent = S.merchNote ? ' · OST MERCH: ' + S.merchNote : ' · OST MERCH: 테이크원 MD 수불부(반기 마지막 달 파일)를 올리면 자동 입력';

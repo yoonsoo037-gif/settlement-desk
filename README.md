@@ -10,20 +10,28 @@ Apps Script를 통해서만 내려옵니다. 업로드한 엑셀은 브라우저
 
 ```
 docs/
-  index.html         ← 첫 화면 (트랙 목록)
+  index.html         ← 정산 데스크 (로그인 → 원본 업로드 → 정산 종류 자동 판별 → 해당 정산 화면)
   config.js          ← 서버(Apps Script 웹 앱) 주소만 둠
-  truz/index.html    ← TRUZ 트랙 (정산 / 품의 복붙 / ERP 전표 3탭)
+  tracks/truz.js     ← TRUZ 정산 모듈 (판별 · 계산 로직 · 정산 / 품의 복붙 / ERP 전표 화면)
+  truz/index.html    ← 예전 주소 호환용 (첫 화면으로 이동)
 apps-script/
   Code.gs            ← 백엔드 코드 사본 (실제 배포는 회사 구글 계정에서)
 ```
 
 GitHub Pages가 `main` 브랜치의 `docs/` 폴더를 서빙합니다.
 
-## 트랙 추가 규칙
+## 동작 원칙
 
-1. `docs/<트랙>/index.html` 화면 추가, 첫 화면(`docs/index.html`)에 카드 추가
-2. DB 시트에 `<트랙코드>_매핑 / _이력 / _확정 / _설정` 탭 추가
-3. `apps-script/Code.gs`의 `TRACKS`에 한 줄 추가 후 재배포(배포 관리 → 수정 → 새 버전)
+- 로그인 직후에는 어떤 정산 데이터도 내려받지 않습니다(비밀번호 확인만).
+- 원본을 올리면 각 모듈의 `detect`로 정산 종류를 판별하고, **그 정산의 설정·매핑·이력만** 서버에서 받아 계산합니다.
+- 공통 산출물: 공급가액 · 부가세(원 미만 절사) · 총액, ERP 전표 업로드 파일. 그 밖의 산출물(검토본, 품의 문구 등)은 정산마다 다릅니다.
+
+## 정산 추가 규칙
+
+1. 드라이브의 과거 정산(원본 · 검토본 · 품의 · ERP 전표)을 분석해 로직을 확정하고, 실제 금액과 1원 단위로 대조 검증
+2. `docs/tracks/<id>.js` 모듈 작성 (`DESK.register({ id, name, desc, fileHint, outputs, detect, mount })`) 후 `docs/index.html`에 `<script src="tracks/<id>.js">` 추가
+3. DB 시트에 `<트랙코드>_매핑 / _이력 / _확정 / _설정` 탭 추가
+4. `apps-script/Code.gs`의 `TRACKS`에 한 줄 추가 후 재배포(배포 관리 → 수정 → 새 버전)
 
 ## 공개 저장소 원칙
 

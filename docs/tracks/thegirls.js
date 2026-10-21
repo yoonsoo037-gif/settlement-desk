@@ -149,7 +149,8 @@
       if (!rs || !rn) throw new Error('수불부에서 "OST 패키지" 매출·매출총이익 행을 찾지 못했습니다.');
       var sum = function (r) { return months.reduce(function (a, m) { return a + (col[m] != null ? num(r[col[m]]) : 0); }, 0); };
       var byMonth = months.map(function (m) { return { m: m, sales: col[m] != null ? num(rs[col[m]]) : 0, net: col[m] != null ? num(rn[col[m]]) : 0 }; });
-      // THE GIRLS 명칭 굿즈(리유저블백·하트쿠션)는 판매가 있으면 별도 표시만 하고 합산하지 않는다(직전 정산·매출추이 기준: OST 패키지만)
+      // OST MERCH = OST 패키지만. 24.2H 작가 매입품의(리유저블백·하트쿠션 총이익 +1,631,898원 발생 반기)도 OST 패키지 합계 58,404,455원만 반영
+      // → 두 품목은 합산하지 않고 확인용으로만 표시
       var extras = ['리유저블백', '하트쿠션'].map(function (k) { var a = find(k), b = find(k + '매출총이익'); return { item: k, sales: a ? Math.round(sum(a)) : 0, net: b ? Math.round(sum(b)) : 0 }; }).filter(function (x) { return x.sales || x.net; });
       return { sales: Math.round(sum(rs)), net: Math.round(sum(rn)), byMonth: byMonth, sheet: name, extras: extras };
     }
@@ -491,7 +492,7 @@
       if (!fx) fl.push({ level: 'bad', text: '반기 말일 환율이 없습니다 — ' + (S.fxNote || '서울외국환중개 매매기준율을 입력해 주세요') });
       else if (S.fxNote) fl.push({ level: 'ok', text: '환율 USD ' + fmt2(fx) + ' — ' + S.fxNote });
       var ex = S.merchExtras || ((CFG.MERCH || {})[hf.y + 'H' + hf.h] || {}).extras || [];
-      if (ex.length) fl.push({ level: 'warn', text: 'OST 패키지 외 THE GIRLS 굿즈 판매가 있습니다 — ' + ex.map(function (x) { return x.item + ' 매출 ' + fmt(x.sales) + ' / 총이익 ' + fmt(x.net); }).join(', ') + ' (직전 정산 기준대로 미포함)' });
+      if (ex.length) fl.push({ level: 'ok', text: '리유저블백·하트쿠션은 작가 OST MERCH에서 제외 (' + ex.map(function (x) { return x.item + ' 총이익 ' + fmt(x.net); }).join(', ') + ') — 24.2H 매입품의 기준: 두 품목 판매가 있었어도 OST 패키지만 반영' });
       if (R.merch.net && S.merchNote) fl.push({ level: 'ok', text: 'OST MERCH 제조원가 제외 매출 ' + fmt(R.merch.net) + '원 — ' + S.merchNote });
       if (!R.merch.net) fl.push({ level: 'warn', text: 'OST MERCH 금액이 비어 있습니다 — 정산 탭에서 테이크원 MD 관련 수불부(반기 마지막 달)를 올리면 자동으로 채워집니다' });
       if (!R.sel.length) fl.push({ level: 'bad', text: '반기 안의 음원 매출 행이 없습니다 — 회계팀 최신 데이터를 올렸는지 확인하세요' });

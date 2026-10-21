@@ -390,6 +390,8 @@ function mount(ctx) {
   function defaults() {
     var qi = qInfo();
     if (!S.inputs.settle) S.inputs.settle = addMonths(qi.lastMonth, 2);
+    // 거래일자: 직전 품의 기준 분기 종료 다음 달 24일 (26.1Q 4/24, 26.2Q 7/24) — 세금계산서 작성일이 다르면 화면에서 수정
+    if (!S.inputs.tx) S.inputs.tx = addMonths(qi.lastMonth, 1) + '-24';
     if (!S.inputs.pay && S.inputs.tx) S.inputs.pay = monthEnd(addMonths(S.inputs.tx.slice(0, 7), 1));
   }
 

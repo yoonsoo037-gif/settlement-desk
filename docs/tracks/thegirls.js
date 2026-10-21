@@ -339,7 +339,7 @@
         ['계약기간', T.contract || ''], ['총금액 (VAT제외)', fmt(R.supply)], ['기간', R.from + ' ~ ' + R.to], ['통화 종류', 'KRW']];
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var re = Math.round(R.gross * (T.reshareRate || 0.23));
-      TXT.detail = '1. 내용 : 블랙핑크더게임 OST "THE GIRLS" ' + R.rangeText.replace(' ~ ', '~') + ' 음원 로열티 정산(' + (T.name || '') + ')\n\n2. 기간 : ' + R.rangeText + '\n' +
+      TXT.detail = '1. 내용 : 블랙핑크더게임 OST "THE GIRLS" ' + R.rangeText.replace(' ~ ', '~') + ' 음원 로열티 정산(' + (T.detailName || T.name || '') + ')\n\n2. 기간 : ' + R.rangeText + '\n' +
         '※ BPTG 계약기간 종료로 인해 해당 정산 이후 판매월 기준 ' + (T.cutoffText || '') + ' 내 데이터만 추가 정산 예정\n\n' +
         '3. 매입금액(VAT제외, 원천징수전) : ' + fmt(R.supply) + ' 원\n\n4. 지급예정일(카드번호) : 품의 결재 후 자금집행일\n\n5. 상세내역 :\n' +
         '- 총 매출 : ' + fmt(R.net) + '원(원천세 제외)\n- 총 정산액 : ' + fmt(R.gross) + '원 (VAT 포함)\n- YG X 테이크원 체결 부속합의서 근거 음원 순매출 ' + rate + ' 쉐어' +
@@ -529,7 +529,7 @@
       var basic = [['비거주자 여부', '비거주자'], ['외국환 신고 필요여부', '직전 품의 선택값과 동일'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'], ['전체계약금액 (VAT제외)', fx ? fmt2(R.totalU) : '-'], ['계약기간', WC.contract || ''], ['통화 종류', 'USD']];
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var order = R.writers.slice().sort(function (a, b) { return b.rate - a.rate; });
-      var names = order.map(function (w) { return w.name; }).join(', ');
+      var names = order.map(function (w) { return w.detailName || w.name; }).join(', ');
       TXT.detail = '아래와 같이 품의하오니 재가하여 주시기 바랍니다.\n\n- 아 래 -\n\n1. 내용 : 블랙핑크더게임 OST "THE GIRLS" 발매 후 ' + hf.kor + ' 음원 로열티 정산(' + names + ')\n\n' +
         '2. 기간 : ' + hf.from.slice(2).replace(/-/g, '/') + ' ~ ' + hf.to.slice(2).replace(/-/g, '/') + ' (' + hf.label + ')\n\n' +
         '3. 매입금액(VAT제외, 원천징수전) : ' + fmt2(R.totalU) + ' USD\n\n4. 상세내역 :\n\n- 총 매출 : ' + fmt2(R.salesU) + ' USD (원천세 제외)\n\n- 총 정산액 : ' + fmt2(R.totalU) + ' USD (원천세 제외)\n\n' +

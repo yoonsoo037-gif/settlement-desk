@@ -116,6 +116,18 @@
         label: label, rangeText: label.replace('-', ' ~ '), from: qa ? qStart(qa) : '', to: qb ? qEnd(qb) : '' };
     }
 
+    // 정산서 "정산 기간" 문구 (이전 정산서 형식): 한 분기 → "2026년 3분기 내용", 여러 분기 → "2025년 4분기 미정산 분 및 2026년 2분기 내용",
+    // 판매월이 계약 종료 기준 월에서 끊기면 끝에 "(26.5월)"
+    function salesEnd(to, cutoff, from) { var ce = cutoff ? monthEnd(cutoff) : ''; return ce && ce < to && !(from && ce < from) ? ce : to; }
+    function periodText(from, to, cutoff) {
+      if (!from || !to) return '';
+      var qk = function (d) { return d.slice(0, 4) + '년 ' + (Math.floor((+d.slice(5, 7) - 1) / 3) + 1) + '분기'; };
+      var end = salesEnd(to, cutoff, from), a = qk(from), b = qk(end);
+      var t = a === b ? a + ' 내용' : a + ' 미정산 분 및 ' + b + ' 내용';
+      if (end !== to) t += '(' + end.slice(2, 4) + '.' + (+end.slice(5, 7)) + '월)';
+      return t;
+    }
+
     // 작가: 회계일자가 반기 안인 행(애드센스 제외) → 음원 순매출 × 요율, OST MERCH(제조원가 제외 매출 × 23%) × 요율
     function half(y, h) { return { y: y, h: h, from: y + (h === 1 ? '-01-01' : '-07-01'), to: y + (h === 1 ? '-06-30' : '-12-31'), label: String(y).slice(2) + '.' + h + 'H', kor: String(y).slice(2) + '년 ' + (h === 1 ? '상반기' : '하반기'), eng: h + 'H' + String(y).slice(2) }; }
     function writer(rows, hf, merch, fx, writers, merchShare) {
@@ -156,7 +168,7 @@
     }
 
     return { merchFromLedger: merchFromLedger, N: N, fmt: fmt, fmt2: fmt2, pad: pad, normDate: normDate, period: period, parse: parse, classify: classify, takeone: takeone,
-      half: half, writer: writer, isAdsense: isAdsense, monthEnd: monthEnd, addMonths: addMonths, q: q, qLabel: qLabel, rowKey: rowKey };
+      half: half, writer: writer, isAdsense: isAdsense, monthEnd: monthEnd, addMonths: addMonths, salesEnd: salesEnd, periodText: periodText, q: q, qLabel: qLabel, rowKey: rowKey };
   })();
   if (typeof module !== 'undefined') module.exports = TG;
   if (typeof DESK === 'undefined') return;
@@ -238,7 +250,7 @@
     var D = cfgOf(ctx.data), CFG = D.CFG, P = CFG.PROJECT || {}, T = CFG.TAKEONE || {};
     var parsed = TG.parse(ctx.wb), settled = {};
     Object.keys(D.ledger).forEach(function (k) { if (D.ledger[k].tk) settled[k] = D.ledger[k].tk; });
-    var S = { rows: TG.classify(parsed.rows, settled, T.cutoff || '2026-05'), inputs: { tx: '', label: '', sales: '', note: '', endNote: false, reshare: null } };
+    var S = { rows: TG.classify(parsed.rows, settled, T.cutoff || '2026-05'), inputs: { tx: '', label: '', period: '', sales: '', note: '', endNote: false, reshare: null } };
     var TXT = {}, TABLES = {}, R = null;
 
     ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산'], ['out', '정산서·메일'], ['pum', '품의 복붙'], ['erp', 'ERP 전표']]);
@@ -259,7 +271,7 @@
 
       '<div class="tabpanel" id="p-out" hidden><section class="panel">' +
       '<div class="ph"><h2>정산서 엑셀 · 세금계산서 요청</h2><p>정산서를 테이크원에 보내 세금계산서를 요청하고, 같은 파일을 품의에 첨부합니다.</p></div>' +
-      '<div class="form"><label>정산 기간 라벨<input id="inLabel"></label><label>매출 기간 (정산서 표기)<input id="inSales"></label><label>참고사항 (선택)<input id="inNote" placeholder="예: 오정산 정정분 포함"></label></div>' +
+      '<div class="form"><label>정산 기간 라벨<input id="inLabel"></label><label>정산 기간 문구 (정산서 2번)<input id="inPeriod"></label><label>매출 기간 (정산서 표기)<input id="inSales"></label><label>참고사항 (선택)<input id="inNote" placeholder="예: 오정산 정정분 포함"></label></div>' +
       '<div class="row"><button class="btn primary big" id="btnXlsx">정산서 엑셀 내려받기</button><button class="btn" id="btnSave">이 회차 확정 저장</button><span class="small muted" id="outMsg"></span></div>' +
       '<div class="block"><header><h3>정산서 요약 (엑셀 첫 시트)</h3><button class="btn sm" data-copy="sheet">표 복사</button></header><div class="body"><div class="tablebox"><table id="sheetTable"></table></div></div></div>' +
       '<div class="block"><header><h3>세금계산서 요청 메일</h3><button class="btn sm" data-copy="mail">본문 복사</button></header><div class="body"><pre class="fmt" id="pMail"></pre></div></div>' +
@@ -282,8 +294,9 @@
     function recalc() { R = TG.takeone(S.rows, T.rate || 0.15); render(); }
     function render() {
       var I = S.inputs;
-      var label = I.label || R.label, salesText = I.sales || (R.from ? dotDate(R.from) + ' ~ ' + dotDate(TG.monthEnd(T.cutoff || '2026-05')) : '');
-      $('inLabel').placeholder = R.label; $('inSales').placeholder = salesText;
+      var label = I.label || R.label, salesText = I.sales || (R.from ? dotDate(R.from) + ' ~ ' + dotDate(TG.salesEnd(R.to, T.cutoff, R.from)) : '');
+      var periodText = I.period || TG.periodText(R.from, R.to, T.cutoff);
+      $('inLabel').placeholder = R.label; $('inSales').placeholder = salesText; $('inPeriod').placeholder = periodText;
       $('tSupply').textContent = fmt(R.supply); $('tVat').textContent = fmt(R.vat); $('tGross').textContent = fmt(R.gross);
       $('amtMeta').innerHTML = [['정산 기간', label + ' (' + R.from + ' ~ ' + R.to + ')'], ['총 매출', fmt(R.sales) + '원'], ['원천세', fmt(R.wht) + '원'], ['실매출 (원천세 제외)', fmt(R.net) + '원'], ['대상 행', R.sel.length + '건 / 전체 ' + S.rows.length + '건']]
         .map(function (x) { return '<div><span>' + x[0] + '</span>' + esc(x[1]) + '</div>'; }).join('');
@@ -363,6 +376,7 @@
       var id = e.target.id;
       if (id === 'inLabel') S.inputs.label = e.target.value.trim();
       else if (id === 'inSales') S.inputs.sales = e.target.value.trim();
+      else if (id === 'inPeriod') S.inputs.period = e.target.value.trim();
       else if (id === 'inNote') S.inputs.note = e.target.value.trim();
       else return;
       clearTimeout(render._t); render._t = setTimeout(render, 200);
@@ -370,10 +384,11 @@
 
     $('btnXlsx').addEventListener('click', function () {
       var I = S.inputs, label = I.label || R.label, salesText = I.sales || $('inSales').placeholder, rate = (T.rate || 0.15);
-      var aoa = [[], ['블랙핑크더게임 OST "THE GIRLS" 음원 매출 수익 배분 건'], [], ['1) 정 산 대 상 : ', null, T.name || ''], ['2) 정 산 기 간 : ', null, label + ' 내용'],
+      var periodText = I.period || $('inPeriod').placeholder, written = $('inTx').value || today();
+      var aoa = [[], ['블랙핑크더게임 OST "THE GIRLS" 음원 매출 수익 배분 건'], [], ['1) 정 산 대 상 : ', null, T.name || ''], ['2) 정 산 기 간 : ', null, periodText],
         ['3) 정 산 금 액 : ', null, fmt(R.gross) + '원 (VAT 포함)'], ['4) 정산 세부내역'], [], ['매출 기간', null, '총 매출액', '수익배분율', '정산금액', '부가가치세', '합계'],
         [salesText, null, R.net, rate, R.supply, R.vat, R.gross], ['합계', null, R.net, null, R.supply, R.vat, R.gross], [],
-        ['5) 정산금액 지급일 :', null, '품의 결재 후 자금집행일'], ['6) 참고사항', null, I.note || ''], [], [null, null, '작 성 일 자', today()], [null, null, '작 성 자', CFG.AUTHOR || '광고IP사업팀']];
+        ['5) 정산금액 지급일 :', null, '품의 결재 후 자금집행일'], ['6) 참고사항', null, I.note || ''], [], [null, null, '작 성 일 자', written], [null, null, '작 성 자', CFG.AUTHOR || '광고IP사업팀']];
       var wb = XLSX.utils.book_new();
       var s1 = XLSX.utils.aoa_to_sheet(aoa); s1['!cols'] = [{ wch: 22 }, { wch: 2 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
       XLSX.utils.book_append_sheet(wb, s1, 'Sheet1');
@@ -382,7 +397,7 @@
       var s2 = XLSX.utils.aoa_to_sheet(rows); s2['!cols'] = [{ wch: 12 }, { wch: 70 }, { wch: 14 }, { wch: 34 }, { wch: 12 }];
       XLSX.utils.book_append_sheet(wb, s2, '매출 정리');
       if (parsed.ledgerSheet) XLSX.utils.book_append_sheet(wb, parsed.ledgerSheet, '원장');
-      ctx.saveFile(label + ' 블랙핑크더게임 THE GIRLS 음원 매출 데이터_FINAL_' + today().slice(2).replace(/-/g, '') + '.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
+      ctx.saveFile(label + ' 블랙핑크더게임 THE GIRLS 음원 매출 데이터_FINAL_' + written.slice(2).replace(/-/g, '') + '.xlsx', XLSX.write(wb, { type: 'array', bookType: 'xlsx' }));
       ctx.toast('정산서 엑셀을 내려받았습니다');
     });
 

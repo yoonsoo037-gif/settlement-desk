@@ -311,7 +311,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
       var root = document.createElement('div');
       $('workspace').innerHTML = ''; $('workspace').appendChild(root);
       var info = track.mount({ root: root, tabsEl: $('tabsSlot'), wb: pending.wb, fileName: pending.name, data: data,
-        post: poster(track.server || track.id), saveFile: saveFile, toast: toast });
+        post: poster(track.server || track.id), get: function (q) { return get(Object.assign({ track: track.server || track.id }, q)); }, saveFile: saveFile, toast: toast });
       current = track;
       $('home').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true;
       $('trackSep').hidden = false; $('trackName').textContent = track.name; $('trackDesc').textContent = track.desc;

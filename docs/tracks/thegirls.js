@@ -135,7 +135,26 @@
         salesU: fx ? r2((Math.round(net) + merchYG) / fx) : 0, rateSum: ws.reduce(function (a, w) { return a + w.rate; }, 0) };
     }
 
-    return { N: N, fmt: fmt, fmt2: fmt2, pad: pad, normDate: normDate, period: period, parse: parse, classify: classify, takeone: takeone,
+    // MD 관련 수불부 "FY YYYY_MD 관련 Summary" 시트: 'OST 패키지'(매출) · 'OST 패키지 매출총이익' 행의 월별 값 → 반기 합계
+    function merchFromLedger(wb, hf) {
+      var y = hf.y, name = wb.SheetNames.filter(function (n) { return new RegExp('FY\\s*' + y).test(n) && /Summary/i.test(n); })[0];
+      if (!name) throw new Error('"FY ' + y + '_MD 관련 Summary" 시트를 찾지 못했습니다.');
+      var rows = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: true, defval: null });
+      var hi = rows.findIndex(function (r) { return r.some(function (c) { return N(c) === y + '년1월'; }); });
+      if (hi < 0) throw new Error('수불부 Summary 시트에서 월 머리글(' + y + '년 1월)을 찾지 못했습니다.');
+      var col = {}; rows[hi].forEach(function (c, i) { var m = N(c).match(/^(\d{4})년(\d{1,2})월$/); if (m && +m[1] === y) col[+m[2]] = i; });
+      var months = hf.h === 1 ? [1, 2, 3, 4, 5, 6] : [7, 8, 9, 10, 11, 12];
+      var find = function (label) { for (var i = hi + 1; i < rows.length; i++) if (rows[i].some(function (c) { return N(c) === label; })) return rows[i]; return null; };
+      var rs = find('OST패키지'), rn = find('OST패키지매출총이익');
+      if (!rs || !rn) throw new Error('수불부에서 "OST 패키지" 매출·매출총이익 행을 찾지 못했습니다.');
+      var sum = function (r) { return months.reduce(function (a, m) { return a + (col[m] != null ? num(r[col[m]]) : 0); }, 0); };
+      var byMonth = months.map(function (m) { return { m: m, sales: col[m] != null ? num(rs[col[m]]) : 0, net: col[m] != null ? num(rn[col[m]]) : 0 }; });
+      // THE GIRLS 명칭 굿즈(리유저블백·하트쿠션)는 판매가 있으면 별도 표시만 하고 합산하지 않는다(직전 정산·매출추이 기준: OST 패키지만)
+      var extras = ['리유저블백', '하트쿠션'].map(function (k) { var a = find(k), b = find(k + '매출총이익'); return { item: k, sales: a ? Math.round(sum(a)) : 0, net: b ? Math.round(sum(b)) : 0 }; }).filter(function (x) { return x.sales || x.net; });
+      return { sales: Math.round(sum(rs)), net: Math.round(sum(rn)), byMonth: byMonth, sheet: name, extras: extras };
+    }
+
+    return { merchFromLedger: merchFromLedger, N: N, fmt: fmt, fmt2: fmt2, pad: pad, normDate: normDate, period: period, parse: parse, classify: classify, takeone: takeone,
       half: half, writer: writer, isAdsense: isAdsense, monthEnd: monthEnd, addMonths: addMonths, q: q, qLabel: qLabel, rowKey: rowKey };
   })();
   if (typeof module !== 'undefined') module.exports = TG;
@@ -218,7 +237,7 @@
     var D = cfgOf(ctx.data), CFG = D.CFG, P = CFG.PROJECT || {}, T = CFG.TAKEONE || {};
     var parsed = TG.parse(ctx.wb), settled = {};
     Object.keys(D.ledger).forEach(function (k) { if (D.ledger[k].tk) settled[k] = D.ledger[k].tk; });
-    var S = { rows: TG.classify(parsed.rows, settled, T.cutoff || '2026-05'), inputs: { tx: '', label: '', sales: '', note: '', endNote: false, reshare: true } };
+    var S = { rows: TG.classify(parsed.rows, settled, T.cutoff || '2026-05'), inputs: { tx: '', label: '', sales: '', note: '', endNote: false, reshare: null } };
     var TXT = {}, TABLES = {}, R = null;
 
     ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산'], ['out', '정산서·메일'], ['pum', '품의 복붙'], ['erp', 'ERP 전표']]);
@@ -276,7 +295,7 @@
       var st = S.rows.filter(function (r) { return r.sel && (r.st === 'straddle' || r.st === 'unknown'); });
       if (st.length) fl.push({ level: 'warn', text: '판매 기간이 걸치거나 판단이 어려운 행 ' + st.length + '건을 포함했습니다 — 회계팀 확인 후 체크를 조정하세요' });
       if (R.net < 0) fl.push({ level: 'bad', text: '실매출이 음수입니다 — 정정(마이너스) 행이 포함됐는지 확인하세요' });
-      if (!R.sel.length) fl.push({ level: 'bad', text: '정산 대상 행이 없습니다' });
+      if (!R.sel.length) fl.push(cnt('settled') && cnt('settled') + cnt('adsense') === S.rows.length ? { level: 'warn', text: '이 파일의 행은 모두 이전 회차에 정산했습니다 — 새로 정산할 행이 없습니다 (회계팀 최신 데이터인지 확인)' } : { level: 'bad', text: '정산 대상 행이 없습니다' });
       var sh = statusHtml(fl); $('statusLine').className = sh.cls; $('statusLine').innerHTML = sh.html; $('flags').innerHTML = flagsHtml(fl);
       var stLabel = { ok: '대상', straddle: '기간 걸침', unknown: '기간 불명', settled: '기정산', adsense: '애드센스', after: '종료 후' };
       $('rowTable').innerHTML = '<tr><th></th><th>회계일자</th><th>적요</th><th>거래처</th><th class="n">매출</th><th class="n">원천세</th><th>판매기간</th><th>구분</th></tr>' +
@@ -294,8 +313,12 @@
       $('pMail').textContent = TXT.mail;
 
       // 품의
-      var tx = I.tx, pay = tx ? TG.monthEnd(TG.addMonths(tx.slice(0, 7), 1)) : '';
-      $('inTx').classList.toggle('need', !tx);
+      // 거래일자 기본값: 대상 분기 종료 다음 달 말일(26.2Q → 7/31, 직전 세금계산서 작성일 기준). 세금계산서 작성일이 다르면 수정
+      var tx = I.tx || (R.to ? TG.monthEnd(TG.addMonths(R.to.slice(0, 7), 1)) : ''), pay = tx ? TG.monthEnd(TG.addMonths(tx.slice(0, 7), 1)) : '';
+      if ($('inTx').value !== tx) $('inTx').value = tx;
+      // 23% 재쉐어 문구 기본값: 정산 기간이 게임 서비스 종료일 이전이면 포함, 이후 기간이 섞이면 제외
+      var reshare = I.reshare != null ? I.reshare : (!T.serviceEnd || R.to <= T.serviceEnd);
+      $('inReshare').value = reshare ? '1' : '0';
       TXT.title = "[매입품의] " + label + " 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '거주자'], ['외국환 신고 필요여부', '1.경상거래 해당없음 / 2.자본거래 해당없음'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'],
@@ -306,7 +329,7 @@
         '※ BPTG 계약기간 종료로 인해 해당 정산 이후 판매월 기준 ' + (T.cutoffText || '') + ' 내 데이터만 추가 정산 예정\n\n' +
         '3. 매입금액(VAT제외, 원천징수전) : ' + fmt(R.supply) + ' 원\n\n4. 지급예정일(카드번호) : 품의 결재 후 자금집행일\n\n5. 상세내역 :\n' +
         '- 총 매출 : ' + fmt(R.net) + '원(원천세 제외)\n- 총 정산액 : ' + fmt(R.gross) + '원 (VAT 포함)\n- YG X 테이크원 체결 부속합의서 근거 음원 순매출 ' + rate + ' 쉐어' +
-        (I.reshare ? '\n- 해당 음원 매출 지급분은 게임 "총 매출"에 포함 예정으로, 추후 테이크원 → YG 분기별 정산 시 재차 ' + Math.round((T.reshareRate || 0.23) * 100) + '% 매출 YG에 쉐어 예정 * 본 정산액 ' + fmt(R.gross) + '원의 ' + Math.round((T.reshareRate || 0.23) * 100) + '%인 약 ' + (re >= 10000 ? Math.round(re / 10000) + '만원' : fmt(re) + '원') + ' 예상' : '') +
+        (reshare ? '\n- 해당 음원 매출 지급분은 게임 "총 매출"에 포함 예정으로, 추후 테이크원 → YG 분기별 정산 시 재차 ' + Math.round((T.reshareRate || 0.23) * 100) + '% 매출 YG에 쉐어 예정 * 본 정산액 ' + fmt(R.gross) + '원의 ' + Math.round((T.reshareRate || 0.23) * 100) + '%인 약 ' + (re >= 10000 ? Math.round(re / 10000) + '만원' : fmt(re) + '원') + ' 예상' : '') +
         (I.endNote ? '\n※ 본 정산을 끝으로 테이크원 측에 배분되는 THE GIRLS 음원 로열티 수익은 없습니다.' : '') +
         (I.note ? '\n※ ' + I.note : '') +
         '\n\n6. 첨부파일 :\n- 음원 매출 데이터 1부.\n- 세금계산서 1부.\n\n7. 지급처 정보(원화)';
@@ -394,9 +417,21 @@
     var all = {}; Object.keys(D.ledger).forEach(function (k) { all[k] = D.ledger[k]; }); parsed.rows.forEach(function (r) { all[r.key] = r; });
     var rows = Object.keys(all).map(function (k) { return all[k]; });
     var maxD = parsed.rows.map(function (r) { return r.d; }).sort().pop();
-    var S = { y: +maxD.slice(0, 4), h: +maxD.slice(5, 7) <= 6 ? 1 : 2, fx: '', merchSales: '', merchNet: '', tx: '' };
-    function merchDefault() { var m = (CFG.MERCH || {})[S.y + 'H' + S.h]; if (m) { S.merchSales = m.sales; S.merchNet = m.net; } else { S.merchSales = ''; S.merchNet = ''; } var f = (CFG.FX || {})[S.y + 'H' + S.h]; S.fx = f || ''; }
-    merchDefault();
+    var S = { y: +maxD.slice(0, 4), h: +maxD.slice(5, 7) <= 6 ? 1 : 2, fx: '', fxNote: '', merchSales: '', merchNet: '', merchNote: '', tx: '' };
+    function merchDefault() {
+      var key = S.y + 'H' + S.h, m = (CFG.MERCH || {})[key], f = (CFG.FX || {})[key];
+      S.merchSales = m ? m.sales : ''; S.merchNet = m ? m.net : ''; S.merchNote = m ? 'DB 기록값 (' + key + ')' : '';
+      S.fx = f || ''; S.fxNote = f ? 'DB 기록값' : '';
+      S.tx = S.h === 1 ? S.y + '-08-01' : (S.y + 1) + '-01-31';   // 직전 회차 인보이스·ERP 회계일자 기준(1H → 8/1, 2H → 익년 1/31)
+      if (!f && ctx.get) {
+        var hf = TG.half(S.y, S.h), want = key;
+        S.fxNote = '서울외국환중개 조회 중…';
+        ctx.get({ section: 'fx', date: hf.to, cur: 'USD' }).then(function (j) {
+          if (S.y + 'H' + S.h !== want) return;
+          S.fx = j.rate; S.fxNote = '서울외국환중개 매매기준율 자동 조회 (' + j.asOf + ')'; syncInputs(); recalc();
+        }, function (e) { if (S.y + 'H' + S.h !== want) return; S.fxNote = '자동 조회 실패 — 직접 입력해 주세요 (' + e.message + ')'; syncInputs(); });
+      }
+    }
     var TXT = {}, TABLES = {}, R = null;
 
     ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산'], ['out', '리포트·메일'], ['pum', '품의 복붙'], ['erp', 'ERP 사업소득']]);
@@ -406,6 +441,7 @@
       '<label>환율 (반기 말일, KRW/USD)<input id="inFx" inputmode="decimal" placeholder="예: 1,400.00"></label>' +
       '<label>OST MERCH 총매출 (KRW)<input id="inMs" inputmode="numeric"></label>' +
       '<label>OST MERCH 제조원가 제외 매출 (KRW)<input id="inMn" inputmode="numeric"></label></div>' +
+      '<div class="row"><label class="btn sm" for="mdFile">MD 관련 수불부 올리기 (OST MERCH 자동 입력)</label><input type="file" id="mdFile" accept=".xlsx,.xls" hidden><span class="small muted" id="fxNote"></span><span class="small muted" id="mdNote"></span></div>' +
       '<p class="small muted" style="margin:0">환율: <a href="http://www.smbs.biz/ExRate/StdExRate.jsp" target="_blank" rel="noopener">서울외국환중개 매매기준율</a> 반기 말일(6/30·12/31) 기준. OST MERCH: 테이크원 MD 관련 수불부 "OST 패키지" 월별 금액의 반기 합계(매출추이 시트 OST MERCH 총이익 행과 동일).</p></section>' +
       '<section class="panel dash"><div class="tiles" id="tiles"></div><div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div><div class="flags" id="flags"></div></section>' +
       '<section class="panel"><div class="ph"><h2>음원 매출 대상 행</h2><p>회계일자가 정산 반기 안인 행(애드센스·유튜브 제외)입니다. DB 누적 원장과 이번 파일을 합쳐서 봅니다.</p></div><div class="tablebox"><table id="rowTable"></table></div></section>' +
@@ -432,8 +468,11 @@
 
     var halves = []; for (var y = S.y + 1; y >= 2024; y--) { halves.push([y, 2], [y, 1]); }
     $('inHalf').innerHTML = halves.map(function (x) { var h = TG.half(x[0], x[1]); return '<option value="' + x[0] + '-' + x[1] + '"' + (x[0] === S.y && x[1] === S.h ? ' selected' : '') + '>' + h.kor + ' (' + h.from + ' ~ ' + h.to + ')</option>'; }).join('');
-    function syncInputs() { $('inFx').value = S.fx; $('inMs').value = S.merchSales; $('inMn').value = S.merchNet; }
-    syncInputs();
+    function syncInputs() {
+      $('inFx').value = S.fx; $('inMs').value = S.merchSales; $('inMn').value = S.merchNet; $('inTx').value = S.tx;
+      $('fxNote').textContent = S.fxNote ? '환율: ' + S.fxNote : ''; $('mdNote').textContent = S.merchNote ? ' · OST MERCH: ' + S.merchNote : ' · OST MERCH: 테이크원 MD 수불부(반기 마지막 달 파일)를 올리면 자동 입력';
+    }
+    merchDefault(); syncInputs();
 
     function recalc() {
       var fx = parseFloat(String(S.fx).replace(/,/g, '')) || 0, hf = TG.half(S.y, S.h);
@@ -449,8 +488,12 @@
       var fl = [], K = ((CFG.KEYS || {}).WRITER || {})[hf.y + 'H' + hf.h];
       if (K) { var ok = R.writers.every(function (w) { var k = K[w.key]; return k && k.krw === w.totalK && Math.abs(k.usd - w.totalU) < 0.005 && (k.wht == null || k.wht === w.wht); });
         fl.push(ok ? { level: 'ok', text: hf.kor + ' 실제 품의·인보이스와 작가별 KRW·USD·원천세 모두 일치' } : { level: 'bad', text: hf.kor + ' 실제 품의 금액과 불일치 — 환율·OST MERCH·대상 행을 확인해 주세요' }); }
-      if (!fx) fl.push({ level: 'bad', text: '반기 말일 환율을 입력해 주세요 (서울외국환중개 매매기준율)' });
-      if (!R.merch.net) fl.push({ level: 'warn', text: 'OST MERCH 금액이 비어 있습니다 — 반기 OST MERCH 매출이 없으면 그대로 진행하세요' });
+      if (!fx) fl.push({ level: 'bad', text: '반기 말일 환율이 없습니다 — ' + (S.fxNote || '서울외국환중개 매매기준율을 입력해 주세요') });
+      else if (S.fxNote) fl.push({ level: 'ok', text: '환율 USD ' + fmt2(fx) + ' — ' + S.fxNote });
+      var ex = S.merchExtras || ((CFG.MERCH || {})[hf.y + 'H' + hf.h] || {}).extras || [];
+      if (ex.length) fl.push({ level: 'warn', text: 'OST 패키지 외 THE GIRLS 굿즈 판매가 있습니다 — ' + ex.map(function (x) { return x.item + ' 매출 ' + fmt(x.sales) + ' / 총이익 ' + fmt(x.net); }).join(', ') + ' (직전 정산 기준대로 미포함)' });
+      if (R.merch.net && S.merchNote) fl.push({ level: 'ok', text: 'OST MERCH 제조원가 제외 매출 ' + fmt(R.merch.net) + '원 — ' + S.merchNote });
+      if (!R.merch.net) fl.push({ level: 'warn', text: 'OST MERCH 금액이 비어 있습니다 — 정산 탭에서 테이크원 MD 관련 수불부(반기 마지막 달)를 올리면 자동으로 채워집니다' });
       if (!R.sel.length) fl.push({ level: 'bad', text: '반기 안의 음원 매출 행이 없습니다 — 회계팀 최신 데이터를 올렸는지 확인하세요' });
       var lastD = R.sel.length ? R.sel[R.sel.length - 1].d : '';
       if (R.sel.length && lastD < TG.addMonths(hf.to.slice(0, 7), 0) + '-01') fl.push({ level: 'warn', text: '반기 마지막 달 회계 데이터가 아직 없습니다 (최종 회계일자 ' + lastD + ') — 반기 결산 데이터 수령 후 확정하세요' });
@@ -473,7 +516,6 @@
 
       // 품의
       var tx = S.tx, pay = tx ? TG.monthEnd(TG.addMonths(tx.slice(0, 7), 1)) : '';
-      $('inTx').classList.toggle('need', !tx);
       TXT.title = "[매입품의] 블랙핑크더게임 OST 'THE GIRLS' " + hf.kor + " 음원 로열티 수익 작가 배분 건";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '비거주자'], ['외국환 신고 필요여부', '직전 품의 선택값과 동일'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'], ['전체계약금액 (VAT제외)', fx ? fmt2(R.totalU) : '-'], ['계약기간', WC.contract || ''], ['통화 종류', 'USD']];
@@ -547,10 +589,26 @@
       var t = e.target;
       if (t.id === 'inHalf') { var p = t.value.split('-'); S.y = +p[0]; S.h = +p[1]; merchDefault(); syncInputs(); recalc(); }
       if (t.id === 'inTx') { S.tx = t.value; render(); }
+      if (t.id === 'mdFile' && t.files[0]) {
+        var f = t.files[0]; t.value = ''; $('mdNote').textContent = ' · 수불부 읽는 중… (용량이 크면 수십 초 걸립니다)';
+        var rd = new FileReader();
+        rd.onload = function () {
+          try {
+            var data = new Uint8Array(rd.result), names = XLSX.read(data, { type: 'array', bookSheets: true }).SheetNames;
+            var want = names.filter(function (n) { return new RegExp('FY\\s*' + S.y).test(n) && /Summary/i.test(n); });
+            var wb = XLSX.read(data, { type: 'array', sheets: want.length ? want : undefined });
+            var m = TG.merchFromLedger(wb, TG.half(S.y, S.h));
+            S.merchSales = m.sales; S.merchNet = m.net; S.merchExtras = m.extras;
+            S.merchNote = f.name + ' · ' + m.byMonth.filter(function (x) { return x.sales || x.net; }).map(function (x) { return x.m + '월 ' + fmt(x.net); }).join(', ');
+            syncInputs(); recalc(); ctx.toast('수불부에서 OST MERCH 금액을 채웠습니다');
+          } catch (err) { $('mdNote').textContent = ' · 수불부를 읽지 못했습니다: ' + (err && err.message ? err.message : err); }
+        };
+        rd.readAsArrayBuffer(f);
+      }
     });
     ctx.root.addEventListener('input', function (e) {
       var id = e.target.id, v = e.target.value.trim();
-      if (id === 'inFx') S.fx = v; else if (id === 'inMs') S.merchSales = v; else if (id === 'inMn') S.merchNet = v; else return;
+      if (id === 'inFx') { S.fx = v; S.fxNote = '직접 입력'; } else if (id === 'inMs') { S.merchSales = v; S.merchNote = '직접 입력'; } else if (id === 'inMn') { S.merchNet = v; S.merchNote = '직접 입력'; } else return;
       clearTimeout(recalc._t); recalc._t = setTimeout(recalc, 250);
     });
     $('btnSave').addEventListener('click', async function () {

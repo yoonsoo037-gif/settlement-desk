@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>정산 데스크</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: 정산 트랙 목록 한 장 — 트랙마다 주기·상태·바로가기 */
+:root {
+  --paper: #f3f5f7; --sheet: #ffffff; --ink: #18212b; --ink-2: #4a5866; --line: #d9dfe5;
+  --accent: #1b5e7a; --accent-soft: #e3eff4; --muted-bg: #eef1f4;
+  --f-body: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --f-num: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root { --paper: #11171c; --sheet: #182129; --ink: #e6ecf1; --ink-2: #9fb0bf; --line: #2c3a46;
+  --accent: #6fb6d3; --accent-soft: #1b3341; --muted-bg: #1d2830; color-scheme: dark } }
+* { box-sizing: border-box }
+html, body { margin: 0; }
+body { background: var(--paper); color: var(--ink); font-family: var(--f-body); font-size: 14px; line-height: 1.55; }
+.wrap { max-width: 880px; margin: 0 auto; padding-block: 48px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); display: grid; gap: 24px; }
+header h1 { margin: 0; font-size: 26px; letter-spacing: -0.01em; }
+header p { margin: 6px 0 0; color: var(--ink-2); max-width: 60ch; }
+.tracks { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px; }
+.track { display: grid; gap: 6px; padding: 18px; border: 1px solid var(--line); border-radius: 10px; background: var(--sheet); color: inherit; text-decoration: none; }
+a.track:hover { border-color: var(--accent); }
+a.track:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.track .code { font-family: var(--f-num); font-size: 12px; color: var(--accent); letter-spacing: 0.06em; }
+.track h2 { margin: 0; font-size: 17px; }
+.track p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.pill { justify-self: start; font-size: 11px; font-weight: 600; padding: 2px 9px; border-radius: 999px; }
+.pill.on { background: var(--accent-soft); color: var(--accent); }
+.pill.off { background: var(--muted-bg); color: var(--ink-2); }
+.track.soon { opacity: .7; }
+footer { color: var(--ink-2); font-size: 12px; max-width: 70ch; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>정산 데스크</h1>
+    <p>정산 원본 엑셀을 올리면 공급가액·부가세·총액, 검토본 엑셀, 품의 입력 내용, ERP 업로드 파일을 만듭니다. 트랙을 고르세요.</p>
+  </header>
+  <section class="tracks" aria-label="정산 트랙">
+    <a class="track" href="truz/">
+      <span class="code">TRUZ</span>
+      <h2>TRUZ 로열티</h2>
+      <p>분기 정산 · 원본 1개 업로드</p>
+      <span class="pill on">사용 가능</span>
+    </a>
+    <div class="track soon">
+      <span class="code">NEXT</span>
+      <h2>다음 트랙</h2>
+      <p>같은 구조로 트랙을 추가합니다</p>
+      <span class="pill off">준비 중</span>
+    </div>
+  </section>
+  <footer>업로드한 엑셀은 브라우저 안에서만 처리되며 어디에도 전송되지 않습니다. 정산에 필요한 기준 데이터는 비밀번호를 확인한 뒤 비공개 저장소에서 불러옵니다.</footer>
+</div>
+</body>
+</html>

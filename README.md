@@ -13,6 +13,7 @@ docs/
   index.html         ← 정산 데스크 (로그인 → 원본 업로드 → 정산 종류 자동 판별 → 해당 정산 화면)
   config.js          ← 서버(Apps Script 웹 앱) 주소만 둠
   tracks/truz.js     ← TRUZ 정산 모듈 (판별 · 계산 로직 · 정산 / 품의 복붙 / ERP 전표 화면)
+  tracks/thegirls.js ← BPTG OST 'THE GIRLS' 매입 정산 모듈 2종 (테이크원 분기 · 해외 작가 반기), 서버 트랙 thegirls 공유
   truz/index.html    ← 예전 주소 호환용 (첫 화면으로 이동)
 apps-script/
   Code.gs            ← 백엔드 코드 사본 (실제 배포는 회사 구글 계정에서)
@@ -29,7 +30,7 @@ GitHub Pages가 `main` 브랜치의 `docs/` 폴더를 서빙합니다.
 ## 정산 추가 규칙
 
 1. 드라이브의 과거 정산(원본 · 검토본 · 품의 · ERP 전표)을 분석해 로직을 확정하고, 실제 금액과 1원 단위로 대조 검증
-2. `docs/tracks/<id>.js` 모듈 작성 (`DESK.register({ id, name, desc, fileHint, outputs, detect, mount })`) 후 `docs/index.html`에 `<script src="tracks/<id>.js">` 추가
+2. `docs/tracks/<id>.js` 모듈 작성 (`DESK.register({ id, name, desc, fileHint, outputs, detect, mount, server? })` — 여러 모듈이 같은 DB를 쓰면 `server`로 서버 트랙 지정) 후 `docs/index.html`에 `<script src="tracks/<id>.js">` 추가
 3. DB 시트에 `<트랙코드>_매핑 / _이력 / _확정 / _설정` 탭 추가
 4. `apps-script/Code.gs`의 `TRACKS`에 한 줄 추가 후 재배포(배포 관리 → 수정 → 새 버전)
 

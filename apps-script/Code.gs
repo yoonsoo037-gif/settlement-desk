@@ -20,7 +20,7 @@
  * 코드 수정 후 재배포: 배포 → 배포 관리 → 연필(수정) → 새 버전 (URL 유지)
  */
 
-var TRACKS = { truz: 'TRUZ' };
+var TRACKS = { truz: 'TRUZ', thegirls: 'THEGIRLS' };
 
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
 function db_() { return SpreadsheetApp.openById(prop_('DB_SPREADSHEET_ID')); }

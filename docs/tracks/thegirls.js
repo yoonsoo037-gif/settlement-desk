@@ -422,16 +422,8 @@
     function merchDefault() {
       var key = S.y + 'H' + S.h, m = (CFG.MERCH || {})[key], f = (CFG.FX || {})[key];
       S.merchSales = m ? m.sales : ''; S.merchNet = m ? m.net : ''; S.merchNote = m ? 'DB 기록값 (' + key + ')' : '';
-      S.fx = f || ''; S.fxNote = f ? 'DB 기록값' : '';
+      S.fx = f || ''; S.fxNote = f ? 'DB 확정값' : '직접 입력 필요 (서울외국환중개 반기 말일 매매기준율)';
       S.tx = S.h === 1 ? S.y + '-08-01' : (S.y + 1) + '-01-31';   // 직전 회차 인보이스·ERP 회계일자 기준(1H → 8/1, 2H → 익년 1/31)
-      if (!f && ctx.get) {
-        var hf = TG.half(S.y, S.h), want = key;
-        S.fxNote = '서울외국환중개 조회 중…';
-        ctx.get({ section: 'fx', date: hf.to, cur: 'USD' }).then(function (j) {
-          if (S.y + 'H' + S.h !== want) return;
-          S.fx = j.rate; S.fxNote = '서울외국환중개 매매기준율 자동 조회 (' + j.asOf + ')'; syncInputs(); recalc();
-        }, function (e) { if (S.y + 'H' + S.h !== want) return; S.fxNote = '자동 조회 실패 — 직접 입력해 주세요 (' + e.message + ')'; syncInputs(); });
-      }
     }
     var TXT = {}, TABLES = {}, R = null;
 
@@ -470,7 +462,7 @@
     var halves = []; for (var y = S.y + 1; y >= 2024; y--) { halves.push([y, 2], [y, 1]); }
     $('inHalf').innerHTML = halves.map(function (x) { var h = TG.half(x[0], x[1]); return '<option value="' + x[0] + '-' + x[1] + '"' + (x[0] === S.y && x[1] === S.h ? ' selected' : '') + '>' + h.kor + ' (' + h.from + ' ~ ' + h.to + ')</option>'; }).join('');
     function syncInputs() {
-      $('inFx').value = S.fx; $('inMs').value = S.merchSales; $('inMn').value = S.merchNet; $('inTx').value = S.tx;
+      $('inFx').value = S.fx; $('inFx').classList.toggle('need', !S.fx); $('inMs').value = S.merchSales; $('inMn').value = S.merchNet; $('inTx').value = S.tx;
       $('fxNote').textContent = S.fxNote ? '환율: ' + S.fxNote : ''; $('mdNote').textContent = S.merchNote ? ' · OST MERCH: ' + S.merchNote : ' · OST MERCH: 테이크원 MD 수불부(반기 마지막 달 파일)를 올리면 자동 입력';
     }
     merchDefault(); syncInputs();
@@ -489,7 +481,7 @@
       var fl = [], K = ((CFG.KEYS || {}).WRITER || {})[hf.y + 'H' + hf.h];
       if (K) { var ok = R.writers.every(function (w) { var k = K[w.key]; return k && k.krw === w.totalK && Math.abs(k.usd - w.totalU) < 0.005 && (k.wht == null || k.wht === w.wht); });
         fl.push(ok ? { level: 'ok', text: hf.kor + ' 실제 품의·인보이스와 작가별 KRW·USD·원천세 모두 일치' } : { level: 'bad', text: hf.kor + ' 실제 품의 금액과 불일치 — 환율·OST MERCH·대상 행을 확인해 주세요' }); }
-      if (!fx) fl.push({ level: 'bad', text: '반기 말일 환율이 없습니다 — ' + (S.fxNote || '서울외국환중개 매매기준율을 입력해 주세요') });
+      if (!fx) fl.push({ level: 'bad', text: '반기 말일 환율을 입력해 주세요 — 서울외국환중개 매매기준율 (' + TG.half(S.y, S.h).to + ' 기준)' });
       else if (S.fxNote) fl.push({ level: 'ok', text: '환율 USD ' + fmt2(fx) + ' — ' + S.fxNote });
       var ex = S.merchExtras || ((CFG.MERCH || {})[hf.y + 'H' + hf.h] || {}).extras || [];
       if (ex.length) fl.push({ level: 'ok', text: '리유저블백·하트쿠션은 작가 OST MERCH에서 제외 (' + ex.map(function (x) { return x.item + ' 총이익 ' + fmt(x.net); }).join(', ') + ') — 24.2H 매입품의 기준: 두 품목 판매가 있었어도 OST 패키지만 반영' });

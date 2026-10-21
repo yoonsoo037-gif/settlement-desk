@@ -14,7 +14,7 @@
  * 2. 프로젝트 설정(⚙) → 스크립트 속성 → 속성 추가 2개
  *    - DESK_PASSWORD : 사이트 비밀번호(원하는 값)
  *    - DB_SPREADSHEET_ID : "정산 데스크 DB" 구글시트 ID (주소창 /d/ 와 /edit 사이 문자열)
- * 3. 상단 함수 선택에서 manualAuthTest 선택 → ▶ 실행 → 권한 검토 → 회사 계정 → 허용 (외부 URL 접속 권한 포함: 환율 조회용)
+ * 3. 상단 함수 선택에서 manualAuthTest 선택 → ▶ 실행 → 권한 검토 → 회사 계정 → 허용
  * 4. 배포 → 새 배포 → 유형(⚙) 웹 앱 / 실행 계정: 나 / 액세스 권한: 모든 사용자 → 배포
  * 5. 나온 웹 앱 URL(.../exec)을 클로드에게 전달 → docs/config.js 의 appsScriptUrl 에 반영
  * 코드 수정 후 재배포: 배포 → 배포 관리 → 연필(수정) → 새 버전 (URL 유지)
@@ -42,7 +42,6 @@ function doGet(e) {
   try {
     if (p.section === 'ping') return out_({ ok: true, tracks: Object.keys(TRACKS) });
     if (p.section === 'config') return out_(getConfig_(p.track));
-    if (p.section === 'fx') return out_(fx_(p.date, p.cur || 'USD'));
     return out_({ ok: false, error: 'unknown_section' });
   } catch (err) {
     return out_({ ok: false, error: 'server_error', message: String(err) });
@@ -119,27 +118,10 @@ function saveQuarter_(track, r) {
   return { ok: true };
 }
 
-// 서울외국환중개 매매기준율: 기준일(휴장일이면 직전 영업일) 환율. 작가 정산의 반기 말일 환율에 쓴다.
-function fx_(date, cur) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return { ok: false, error: 'bad_date' };
-  var end = new Date(date + 'T12:00:00+09:00'), start = new Date(end.getTime() - 14 * 864e5);
-  var f = function (d) { return Utilities.formatDate(d, 'Asia/Seoul', 'yyyy-MM-dd'); };
-  var url = 'http://www.smbs.biz/ExRate/StdExRate_xml.jsp?arr_value=' + encodeURIComponent(cur) + '_' + f(start) + '_' + f(end);
-  var xml = UrlFetchApp.fetch(url, { muteHttpExceptions: true }).getContentText();
-  var tags = xml.match(/<set\b[^>]*>/g) || [], last = null;
-  tags.forEach(function (t) {
-    var l = (t.match(/label\s*=\s*"([^"]*)"/) || [])[1], v = (t.match(/value\s*=\s*"([^"]*)"/) || [])[1];
-    if (l && v && !isNaN(parseFloat(v.replace(/,/g, '')))) last = { asOf: l, rate: parseFloat(v.replace(/,/g, '')) };
-  });
-  if (!last) return { ok: false, error: 'fx_not_found', message: '서울외국환중개에서 환율을 찾지 못했습니다' };
-  return { ok: true, cur: cur, date: date, asOf: last.asOf, rate: last.rate };
-}
-
 // 권한 승인·연결 확인용 — 스크립트 편집기에서 ▶ 실행(웹 요청에서는 호출되지 않음)
 function manualAuthTest() {
   Object.keys(TRACKS).forEach(function (t) {
     var c = getConfig_(t);
     Logger.log(TRACKS[t] + ': 매핑 ' + Object.keys(c.map).length + '건, 이력 ' + c.hist.length + '분기, 설정 키: ' + Object.keys(c.cfg).join(','));
   });
-  Logger.log('환율 확인(2026-06-30 USD): ' + JSON.stringify(fx_('2026-06-30', 'USD')));
 }

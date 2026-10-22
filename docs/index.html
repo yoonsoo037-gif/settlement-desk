@@ -296,13 +296,15 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=20261022b"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="config.js?v=20261022c"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz.js?v=20261022b"></script>
-<script src="tracks/thegirls.js?v=20261022b"></script>
+<script src="tracks/truz-review.js?v=20261022c"></script>
+<script src="tracks/truz.js?v=20261022c"></script>
+<script src="tracks/thegirls.js?v=20261022c"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -383,7 +385,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
       }
       try {
         var wb = XLSX.read(u8, { type: 'array' });
-        pending = { wb: wb, name: f.name };
+        pending = { wb: wb, name: f.name, bytes: u8 };
         var hit = DESK.tracks.filter(function (t) { return t.detect(wb); });
         fileInfo(hit.length ? '' : 'err', '<b>' + (hit.length ? '✓ ' : '✕ ') + esc(f.name) + ' · ' + kb(f.size) + '</b>' + sheetList(wb) +
           (hit.length ? '' : DESK.tracks.filter(function (t) { return t.why; }).map(function (t) { var w = t.why(wb); return w ? '<span>' + esc(t.name) + ': ' + esc(w) + '</span>' : ''; }).join('')));
@@ -436,7 +438,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
       var data = await get({ section: 'config', track: track.server || track.id });
       var root = document.createElement('div');
       $('workspace').innerHTML = ''; $('workspace').appendChild(root);
-      var info = track.mount({ root: root, tabsEl: $('tabsSlot'), wb: pending.wb, fileName: pending.name, data: data,
+      var info = track.mount({ root: root, tabsEl: $('tabsSlot'), wb: pending.wb, bytes: pending.bytes, fileName: pending.name, data: data,
         post: poster(track.server || track.id), get: function (q) { return get(Object.assign({ track: track.server || track.id }, q)); }, saveFile: saveFile, toast: toast });
       current = track;
       $('home').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true; $('fileInfo').hidden = true;

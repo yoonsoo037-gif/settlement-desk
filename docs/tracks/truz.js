@@ -290,7 +290,22 @@ var TRUZ = (function () {
     return out;
   }
 
-  return { suggest: suggest, setConfig: setConfig, setMembers: setMembers, buildErpUpload: buildErpUpload, buildReview: buildReview, N: N, CATS: CATS, MEMBERS: MEMBERS, MEMBER_NAMES: MEMBER_NAMES, parse: parse, compute: compute, fmt: fmt, approval: approval, pad: pad };
+  // 멤버 시트 "캐릭터" 열 = 멤버의 캐릭터(1:1). 멤버별로 가장 많이 쓰인 한글 캐릭터명(멤버로 90% 이상 쏠리는 낱말)을 찾고, 단체는 "트루즈 N"
+  function charIndex(map) {
+    var toks = function (n) { return String(n).toUpperCase().split(/[^0-9A-Z\uAC00-\uD7A3]+/).filter(function (t) { return (t.length >= 2 || /[\uAC00-\uD7A3]/.test(t)) && !/^\d+$/.test(t); }); };
+    var idx = {}, tot = {};
+    Object.keys(map).forEach(function (k) { var m = map[k]; toks(k).forEach(function (t) { tot[t] = (tot[t] || 0) + 1; if (m && !/인$/.test(m)) { idx[t] = idx[t] || {}; idx[t][m] = (idx[t][m] || 0) + 1; } }); });
+    var ok = {};
+    Object.keys(idx).forEach(function (t) { var d = idx[t], top = Object.keys(d).sort(function (a, b) { return d[b] - d[a]; })[0]; if (d[top] >= 10 && d[top] / tot[t] >= 0.9 && MEMBER_NAMES.indexOf(t) < 0) ok[t] = 1; });
+    var byMem = {};
+    Object.keys(ok).filter(function (t) { return /[\uAC00-\uD7A3]/.test(t); }).forEach(function (t) {
+      var d = idx[t], top = Object.keys(d).sort(function (a, b) { return d[b] - d[a]; })[0];
+      if (!byMem[top] || d[top] > byMem[top].n) byMem[top] = { t: t, n: d[top] };
+    });
+    return function (name, member) { var g = String(member || '').match(/^트레저\s*(\d+)인$/); return g ? '트루즈 ' + g[1] : byMem[member] ? byMem[member].t : ''; };
+  }
+
+  return { suggest: suggest, charIndex: charIndex, setConfig: setConfig, setMembers: setMembers, buildErpUpload: buildErpUpload, buildReview: buildReview, N: N, CATS: CATS, MEMBERS: MEMBERS, MEMBER_NAMES: MEMBER_NAMES, parse: parse, compute: compute, fmt: fmt, approval: approval, pad: pad };
 })();
 
 
@@ -314,7 +329,7 @@ var VIEW = `    <!-- 탭 1: 업로드 → 대시보드 → YG검토본 -->
           <button class="btn" id="btnSave">이 분기 확정 저장</button>
           <span class="small muted" id="outMsg"></span>
         </div>
-        <p class="small muted" style="margin:0">YG검토본 = IPX 원본 시트 + 자재(환율·KRW·멤버 열 추가) + PIVOT·PIVOT 멤버·멤버 시트. 품의 첨부로 그대로 씁니다.</p>
+        <p class="small muted" style="margin:0">YG검토본 = IPX 원본 파일 그대로(서식·피벗·차트 유지) + 자재(환율·KRW·멤버) + PIVOT·PIVOT 멤버(엑셀 피벗)·멤버 시트. 26.2Q 회계팀 제출본과 같은 양식입니다.</p>
       </section>
 
       <details class="panel fold" id="dCheck">
@@ -488,13 +503,13 @@ function mount(ctx) {
 
   function renderMapFix() {
     var box = $('mapFix'), un = Object.assign({}, S.result.unmapped || {}), auto = S.auto || {};
-    S.result.rows.forEach(function (x) { if (auto[x.d.name] && x.krw) un[x.d.name] = (un[x.d.name] || 0) + x.krw; });
+    S.result.rows.forEach(function (x) { if (auto[x.d.name]) un[x.d.name] = (un[x.d.name] || 0) + (x.krw || 0); });
     var names = Object.keys(un).sort(function (a, b) { return (auto[a] ? 1 : 0) - (auto[b] ? 1 : 0) || un[b] - un[a]; });
     if (!names.length) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
     var opts = TRUZ.MEMBER_NAMES.concat(['트레저 12인']).map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('');
     box.innerHTML = '<div class="block"><header><h3>새 제품 매핑 (' + names.length + '개)</h3><button class="btn sm primary" id="btnMap">매핑 적용' + (online ? '·저장' : '') + '</button></header><div class="body"><p class="small muted" style="margin:0">제품명의 캐릭터(루루=하루토, 본본=준규, 칠리=최현석, 포동=소정환, 라우=윤재혁, 로미=지훈 등)를 보고 멤버를 고르세요. 저장하면 다음 분기부터 자동 적용됩니다.</p><div class="tablebox"><table><tr><th>제품명</th><th class="n">KRW</th><th>멤버</th></tr>' +
-      names.map(function (n, i) { return '<tr><td>' + esc(n) + (auto[n] ? ' <span class="small muted">· 자동: "' + esc(auto[n].tok) + '" 기존 ' + auto[n].of + '개 중 ' + auto[n].n + '개</span>' : '') + '</td><td class="n num">' + fmt(un[n]) + '</td><td><select id="map-' + i + '" data-name="' + esc(n) + '"><option value="">선택</option>' + (auto[n] ? opts.replace('<option>' + esc(auto[n].m) + '</option>', '<option selected>' + esc(auto[n].m) + '</option>') : opts) + '</select></td></tr>'; }).join('') + '</table></div></div></div>';
+      names.map(function (n, i) { return '<tr><td>' + esc(n) + (auto[n] ? ' <span class="small muted">· 자동: ' + (auto[n].note ? esc(auto[n].note) : '"' + esc(auto[n].tok) + '" 기존 ' + auto[n].of + '개 중 ' + auto[n].n + '개') + '</span>' : '') + '</td><td class="n num">' + fmt(un[n]) + '</td><td><select id="map-' + i + '" data-name="' + esc(n) + '"><option value="">선택</option>' + (auto[n] ? opts.replace('<option>' + esc(auto[n].m) + '</option>', '<option selected>' + esc(auto[n].m) + '</option>') : opts) + '</select></td></tr>'; }).join('') + '</table></div></div></div>';
     $('btnMap').onclick = applyMappings;
   }
 
@@ -686,10 +701,15 @@ function mount(ctx) {
     var pum = [['항목', '값'], ['제목', TXT.title], ['정산기간', qi.start + ' ~ ' + qi.end], ['공급가액', r.supply], ['부가세 (원 미만 절사)', r.vat], ['총액', r.gross],
       ['거래일자', S.inputs.tx], ['입금예정일', S.inputs.pay], ['정산월', S.inputs.settle], ['반올림 주석', r.roundNote || '없음'], ['원본 파일', S.fileName], [], ['1. 로열티 상세 내역 양식'], [TXT.fixed]].concat([[]], numify(TABLES.fixedTable));
     var hl = allHist().filter(function (h) { return h[0] !== S.quarter.key && h[0] < S.quarter.key; }).concat([[S.quarter.key, r.supply]]);
-    var wb = TRUZ.buildReview(S.parsed, r, { hist: hl.map(function (h) { return [h[0].slice(0, 4) + '.Q' + h[0].slice(5) + '.', h[1]]; }), erp: numify(TABLES.erpTable), pum: pum });
-    var out = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
-    var name = S.fileName.replace(/\.xlsx?$/i, '') + '_YG검토.xlsx';
-    saveFile(name, out); toast('YG검토본을 내려받았습니다');
+    // 회계팀 제출본: IPX 원본 파일을 그대로 두고 자재·PIVOT·PIVOT 멤버·멤버 시트(실제 피벗)만 덧붙인다 (26.2Q YG검토본 양식)
+    if (!ctx.bytes || typeof JSZip === 'undefined' || typeof TRUZ_REVIEW === 'undefined') { toast('YG검토본 생성 모듈을 불러오지 못했습니다 — 새로고침 후 다시 시도해 주세요'); return; }
+    var btn = this; btn.disabled = true; var label = btn.textContent; btn.textContent = '만드는 중…';
+    try {
+      var cms = Array.from(new Set(qi.months.concat(S.parsed.quarter.months))).sort();
+      var out = await TRUZ_REVIEW.build(ctx.bytes, { p: S.parsed, r: r, rates: S.rates, map: S.map, hist: hl, cats: TRUZ.CATS, months: cms, charOf: TRUZ.charIndex(S.map) });
+      saveFile(S.fileName.replace(/\.xlsx?$/i, '') + '_YG검토.xlsx', out); toast('YG검토본을 내려받았습니다');
+    } catch (e) { toast('YG검토본을 만들지 못했습니다: ' + (e && e.message ? e.message : e)); }
+    finally { btn.disabled = false; btn.textContent = label; }
   });
 
   $('btnErp').addEventListener('click', async function () {
@@ -736,6 +756,10 @@ function mount(ctx) {
   var fresh = Array.from(new Set(p.detail.filter(function (d) { return d.channel === '온라인' || d.channel === '오프라인'; }).map(function (d) { return d.name; })))
     .filter(function (n) { return !S.map[TRUZ.N(n)]; });
   S.auto = TRUZ.suggest(fresh, S.map);
+  // B2B 신규 제품: 금액(KRW)은 0이지만 YG검토본 멤버 열(VLOOKUP)용. 캐릭터가 없으면 단체(트레저 10인)로 제안
+  Array.from(new Set(p.detail.filter(function (d) { return d.channel === 'B2B'; }).map(function (d) { return d.name; })))
+    .filter(function (n) { return !S.map[TRUZ.N(n)] && fresh.indexOf(n) < 0; })
+    .forEach(function (n) { var sg = TRUZ.suggest([n], S.map)[n]; S.auto[n] = sg || { m: '트레저 10인', note: 'B2B 단체 상품 · 금액 영향 없음' }; });
   Object.keys(S.auto).forEach(function (n) { S.map[TRUZ.N(n)] = S.auto[n].m; });
   S.result = TRUZ.compute(p, S.rates, S.map, { auto: S.auto });
   render();

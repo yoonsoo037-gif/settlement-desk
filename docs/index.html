@@ -140,6 +140,11 @@ details.vfold > summary { font-size: 12.5px; color: var(--ink-2); font-weight: 6
 .form input:focus, .form select:focus { border-color: var(--sky); outline: none; box-shadow: 0 0 0 3px var(--sky-soft); }
 .form input.need { border-color: var(--bad); background: var(--bad-bg); }
 .allcopy { display: flex; align-items: end; }
+.fileinfo { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--mint-soft); font-size: 13px; }
+.fileinfo b { font-size: 13.5px; }
+.fileinfo.err { background: var(--bad-bg); color: var(--bad); }
+.fileinfo.busy { background: var(--sky-soft); }
+.fileinfo .sheets { color: var(--ink-2); font-size: 12px; overflow-wrap: anywhere; }
 .pick { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 12px 14px; border-radius: 14px; background: var(--sky-soft); }
 .pick select { padding: 7px 10px; border: 1.5px solid var(--line); border-radius: var(--r-in); background: var(--sheet); color: var(--ink); max-width: 100%; }
 
@@ -254,6 +259,7 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
         <span class="muted small">.xlsx / .xls · 파일 구조를 보고 정산 종류를 자동으로 고릅니다</span>
         <input type="file" id="file" accept=".xlsx,.xls" hidden>
       </label>
+      <div id="fileInfo" class="fileinfo" hidden></div>
       <div id="loadMsg" class="small muted" role="status"></div>
       <div class="pick" id="pick" hidden><span class="small">정산 종류를 직접 선택:</span><select id="pickSel"></select><button class="btn sm primary" id="pickBtn" type="button">이 정산으로 읽기</button></div>
       <div class="tracks" id="trackList"></div>
@@ -276,13 +282,13 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js"></script>
+<script src="config.js?v=20261022a"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz.js"></script>
-<script src="tracks/thegirls.js"></script>
+<script src="tracks/truz.js?v=20261022a"></script>
+<script src="tracks/thegirls.js?v=20261022a"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -338,24 +344,41 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
 
   // ---------- 파일 → 판별 → 해당 정산 설정 로드 → 모듈 실행 ----------
   var pending = null;
+  // 업로드한 파일을 실제로 받았는지·무엇을 읽었는지 바로 보여준다
+  function fileInfo(cls, html) { var el = $('fileInfo'); el.className = 'fileinfo' + (cls ? ' ' + cls : ''); el.innerHTML = html; el.hidden = false; }
+  var kb = function (n) { return n >= 1048576 ? (n / 1048576).toFixed(1) + 'MB' : Math.max(1, Math.round(n / 1024)) + 'KB'; };
+  function sheetList(wb) { return '<span class="sheets">읽은 시트 ' + wb.SheetNames.length + '개: ' + esc(wb.SheetNames.join(' · ')) + '</span>'; }
   function handleFile(f) {
     if (!f) return;
     if (typeof XLSX === 'undefined') { $('loadMsg').textContent = '엑셀 해석 라이브러리를 불러오지 못했습니다. 페이지를 새로고침해 주세요.'; return; }
-    $('pick').hidden = true; $('loadMsg').textContent = f.name + ' 읽는 중…';
+    $('pick').hidden = true; $('loadMsg').textContent = '';
+    fileInfo('busy', '<b>⏳ ' + esc(f.name) + '</b><span>' + kb(f.size) + ' · 파일을 받았습니다. 읽는 중…</span>');
     var rd = new FileReader();
+    rd.onerror = function () { fileInfo('err', '<b>✕ ' + esc(f.name) + '</b><span>파일을 읽지 못했습니다. 다시 선택해 주세요.</span>'); };
     rd.onload = function () {
+      var u8 = new Uint8Array(rd.result);
+      // 엑셀 형식 점검: .xlsx = ZIP(PK..), .xls = OLE(D0 CF 11 E0). 그 밖이면 회사 문서보안(DRM)으로 암호화된 파일일 가능성이 높다
+      var zip = u8[0] === 0x50 && u8[1] === 0x4B, ole = u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0;
+      var xlsxName = /\.xlsx$/i.test(f.name);
+      if (!zip && !ole || (xlsxName && ole)) {
+        fileInfo('err', '<b>✕ ' + esc(f.name) + ' · ' + kb(f.size) + '</b><span>엑셀 파일 형식이 아닙니다 — 문서보안(DRM) 또는 비밀번호로 암호화된 파일로 보입니다. 엑셀에서는 열리지만 브라우저는 읽을 수 없습니다.</span>' +
+          '<span class="sheets">해결: DRM 해제(반출) 후 다시 올리거나, 드라이브·메일 원본을 DRM 없는 PC/폰에서 받아 올려 주세요.</span>');
+        return;
+      }
       try {
-        var wb = XLSX.read(new Uint8Array(rd.result), { type: 'array' });
+        var wb = XLSX.read(u8, { type: 'array' });
         pending = { wb: wb, name: f.name };
         var hit = DESK.tracks.filter(function (t) { return t.detect(wb); });
+        fileInfo(hit.length ? '' : 'err', '<b>' + (hit.length ? '✓ ' : '✕ ') + esc(f.name) + ' · ' + kb(f.size) + '</b>' + sheetList(wb) +
+          (hit.length ? '' : DESK.tracks.filter(function (t) { return t.why; }).map(function (t) { var w = t.why(wb); return w ? '<span>' + esc(t.name) + ': ' + esc(w) + '</span>' : ''; }).join('')));
         if (hit.length === 1) open(hit[0]);
         else {
-          $('loadMsg').textContent = hit.length ? '같은 파일을 쓰는 정산이 여러 개입니다. 진행할 정산을 골라 주세요.' : '어떤 정산 파일인지 판별하지 못했습니다. 정산 종류를 고르거나, 원본 파일이 맞는지 확인해 주세요.';
+          $('loadMsg').textContent = hit.length ? '같은 파일을 쓰는 정산이 여러 개입니다. 진행할 정산을 골라 주세요.' : '어떤 정산 파일인지 판별하지 못했습니다. 위 사유를 확인하거나 정산 종류를 직접 골라 주세요.';
           var opts = hit.length ? hit : DESK.tracks;
           $('pickSel').innerHTML = opts.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + ' — ' + esc(t.desc) + '</option>'; }).join('');
           $('pick').hidden = false;
         }
-      } catch (err) { $('loadMsg').textContent = '읽지 못했습니다: ' + (err && err.message ? err.message : err); }
+      } catch (err) { fileInfo('err', '<b>✕ ' + esc(f.name) + ' · ' + kb(f.size) + '</b><span>엑셀로 읽지 못했습니다: ' + esc(err && err.message ? err.message : err) + '</span>'); }
     };
     rd.readAsArrayBuffer(f);
   }
@@ -369,7 +392,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
       var info = track.mount({ root: root, tabsEl: $('tabsSlot'), wb: pending.wb, fileName: pending.name, data: data,
         post: poster(track.server || track.id), get: function (q) { return get(Object.assign({ track: track.server || track.id }, q)); }, saveFile: saveFile, toast: toast });
       current = track;
-      $('home').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true;
+      $('home').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true; $('fileInfo').hidden = true;
       $('trackSep').hidden = false; $('trackName').textContent = track.name; $('trackDesc').textContent = track.desc;
       $('chipQ').hidden = false; $('chipMode').hidden = false; $('chipMode').title = (info && info.note) || '';
       if (info && info.quarter) $('chipQ').textContent = info.quarter;
@@ -391,7 +414,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     var id = $('pickSel').value, t = DESK.tracks.filter(function (x) { return x.id === id; })[0];
     if (t) open(t);
   });
-  $('btnNew').addEventListener('click', function () { goHome(); $('loadMsg').textContent = ''; });
+  $('btnNew').addEventListener('click', function () { goHome(); $('loadMsg').textContent = ''; $('fileInfo').hidden = true; });
   // 복사 버튼은 눌린 자리에서 "복사됨"으로 잠깐 바뀐다 (모든 정산 공통)
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-copy], [data-copyval]');

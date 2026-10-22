@@ -747,6 +747,7 @@ DESK.register({
   fileHint: 'IPX 원본 TRUZ_Royalty_Summary_20xxQn_….xlsx',
   outputs: ['YG검토본', '품의 입력 내용', 'ERP 전표 업로드 파일'],
   detect: function (wb) { try { TRUZ.parse(wb); return true; } catch (e) { return false; } },
+  why: function (wb) { try { TRUZ.parse(wb); return ''; } catch (e) { return e.message; } },
   mount: mount
 });
 })();

@@ -5,6 +5,8 @@
  * 내려주고, 새 제품 매핑과 분기 확정 저장을 같은 시트에 기록한다. 업로드한 정산 원본 엑셀은 브라우저 안에서만
  * 처리하므로 이 스크립트로 보내지지 않는다. 공개 저장소에는 회사 데이터가 없고, 데이터는 전부 이 스크립트가
  * 읽는 비공개 시트에만 있다.
+ * 회사 PC에서 브라우저 업로드가 막힌 경우를 위해, 내 드라이브의 엑셀 원본(.xlsx/.xls)을 목록으로 보여주고
+ * 고른 파일 내용을 내려준다(files / file). 엑셀 파일만 대상이며 다른 형식은 거절한다.
  *
  * DB 시트 탭 규칙: <트랙코드>_매핑 / <트랙코드>_이력 / <트랙코드>_확정 / <트랙코드>_설정 (예: TRUZ_매핑)
  * 새 트랙을 추가할 때는 TRACKS 에 한 줄 추가하고 같은 이름 규칙으로 탭 4개를 만든다.
@@ -42,6 +44,8 @@ function doGet(e) {
   try {
     if (p.section === 'ping') return out_({ ok: true, tracks: Object.keys(TRACKS) });
     if (p.section === 'config') return out_(getConfig_(p.track));
+    if (p.section === 'files') return out_(listFiles_(p.q));
+    if (p.section === 'file') return out_(getFile_(p.id));
     return out_({ ok: false, error: 'unknown_section' });
   } catch (err) {
     return out_({ ok: false, error: 'server_error', message: String(err) });
@@ -118,10 +122,39 @@ function saveQuarter_(track, r) {
   return { ok: true };
 }
 
+// ---------- 드라이브 엑셀 원본 (업로드가 막힌 PC용) ----------
+var XL_MIMES_ = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+
+// ?section=files&q=검색어 — 최근 수정 순 엑셀 파일 최대 50개. 검색어가 없으면 최근 120일 안의 파일
+function listFiles_(q) {
+  var mimeQ = '(' + XL_MIMES_.map(function (m) { return "mimeType = '" + m + "'"; }).join(' or ') + ')';
+  var query = mimeQ + ' and trashed = false';
+  q = String(q || '').replace(/['\\]/g, '').trim();
+  if (q) query += " and title contains '" + q + "'";
+  else query += " and modifiedDate > '" + Utilities.formatDate(new Date(Date.now() - 120 * 864e5), 'UTC', "yyyy-MM-dd'T'HH:mm:ss") + "'";
+  var it = DriveApp.searchFiles(query), list = [];
+  while (it.hasNext() && list.length < 300) {
+    var f = it.next();
+    list.push({ id: f.getId(), name: f.getName(), size: f.getSize(), modified: f.getLastUpdated().getTime() });
+  }
+  list.sort(function (a, b) { return b.modified - a.modified; });
+  return { ok: true, files: list.slice(0, 50) };
+}
+
+// ?section=file&id=... — 엑셀 파일 내용을 base64로 (20MB 이하)
+function getFile_(id) {
+  var f = DriveApp.getFileById(String(id || ''));
+  if (XL_MIMES_.indexOf(f.getMimeType()) < 0) return { ok: false, error: 'not_excel', message: '엑셀(.xlsx/.xls) 파일만 불러올 수 있습니다' };
+  if (f.getSize() > 20 * 1024 * 1024) return { ok: false, error: 'too_large', message: '20MB를 넘는 파일입니다' };
+  return { ok: true, name: f.getName(), size: f.getSize(), b64: Utilities.base64Encode(f.getBlob().getBytes()) };
+}
+
 // 권한 승인·연결 확인용 — 스크립트 편집기에서 ▶ 실행(웹 요청에서는 호출되지 않음)
 function manualAuthTest() {
   Object.keys(TRACKS).forEach(function (t) {
     var c = getConfig_(t);
     Logger.log(TRACKS[t] + ': 매핑 ' + Object.keys(c.map).length + '건, 이력 ' + c.hist.length + '분기, 설정 키: ' + Object.keys(c.cfg).join(','));
   });
+  var fl = listFiles_('');
+  Logger.log('드라이브 엑셀(최근 120일): ' + fl.files.length + '개' + (fl.files[0] ? ' · 최근: ' + fl.files[0].name : ''));
 }

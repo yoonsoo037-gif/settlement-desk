@@ -140,6 +140,15 @@ details.vfold > summary { font-size: 12.5px; color: var(--ink-2); font-weight: 6
 .form input:focus, .form select:focus { border-color: var(--sky); outline: none; box-shadow: 0 0 0 3px var(--sky-soft); }
 .form input.need { border-color: var(--bad); background: var(--bad-bg); }
 .allcopy { display: flex; align-items: end; }
+.drivebar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; justify-content: center; margin-top: -4px; }
+.drivebox { display: grid; gap: 10px; padding: 14px; border-radius: 18px; background: var(--sky-soft); }
+.drivebox input { flex: 1; min-width: 0; padding: 9px 12px; border: 1.5px solid var(--line); border-radius: var(--r-in); background: var(--sheet); color: var(--ink); font-size: 14px; }
+.drivebox input:focus { border-color: var(--sky); outline: none; }
+.drivelist { display: grid; gap: 6px; max-height: 360px; overflow: auto; }
+.drivelist button { all: unset; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 14px; border-radius: 12px; background: var(--sheet); box-shadow: 0 1px 3px rgba(64, 124, 160, 0.08); }
+.drivelist button:hover, .drivelist button:focus-visible { outline: 2px solid var(--sky); }
+.drivelist b { font-size: 13.5px; overflow-wrap: anywhere; }
+.drivelist span { font-size: 12px; color: var(--ink-2); white-space: nowrap; }
 .fileinfo { display: grid; gap: 4px; padding: 12px 14px; border-radius: 14px; background: var(--mint-soft); font-size: 13px; }
 .fileinfo b { font-size: 13.5px; }
 .fileinfo.err { background: var(--bad-bg); color: var(--bad); }
@@ -259,6 +268,11 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
         <span class="muted small">.xlsx / .xls · 파일 구조를 보고 정산 종류를 자동으로 고릅니다</span>
         <input type="file" id="file" accept=".xlsx,.xls" hidden>
       </label>
+      <div class="drivebar"><button class="btn primary" id="btnDrive" type="button">드라이브에서 선택</button><span class="small muted">회사 PC에서 업로드가 막히면, 드라이브에 넣은 원본을 바로 불러옵니다</span></div>
+      <div class="drivebox" id="drivePanel" hidden>
+        <div class="row"><input id="driveQ" type="search" placeholder="파일명 검색 (예: TRUZ, THE GIRLS)" autocomplete="off"><button class="btn sm" id="driveClose" type="button">닫기</button></div>
+        <div id="driveList" class="drivelist" role="list"></div>
+      </div>
       <div id="fileInfo" class="fileinfo" hidden></div>
       <div id="loadMsg" class="small muted" role="status"></div>
       <div class="pick" id="pick" hidden><span class="small">정산 종류를 직접 선택:</span><select id="pickSel"></select><button class="btn sm primary" id="pickBtn" type="button">이 정산으로 읽기</button></div>
@@ -282,13 +296,13 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="config.js?v=20261022a"></script>
+<script src="config.js?v=20261022b"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz.js?v=20261022a"></script>
-<script src="tracks/thegirls.js?v=20261022a"></script>
+<script src="tracks/truz.js?v=20261022b"></script>
+<script src="tracks/thegirls.js?v=20261022b"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -355,14 +369,16 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     fileInfo('busy', '<b>⏳ ' + esc(f.name) + '</b><span>' + kb(f.size) + ' · 파일을 받았습니다. 읽는 중…</span>');
     var rd = new FileReader();
     rd.onerror = function () { fileInfo('err', '<b>✕ ' + esc(f.name) + '</b><span>파일을 읽지 못했습니다. 다시 선택해 주세요.</span>'); };
-    rd.onload = function () {
-      var u8 = new Uint8Array(rd.result);
+    rd.onload = function () { processBytes(f, new Uint8Array(rd.result)); };
+    rd.readAsArrayBuffer(f);
+  }
+  function processBytes(f, u8) {
       // 엑셀 형식 점검: .xlsx = ZIP(PK..), .xls = OLE(D0 CF 11 E0). 그 밖이면 회사 문서보안(DRM)으로 암호화된 파일일 가능성이 높다
       var zip = u8[0] === 0x50 && u8[1] === 0x4B, ole = u8[0] === 0xD0 && u8[1] === 0xCF && u8[2] === 0x11 && u8[3] === 0xE0;
       var xlsxName = /\.xlsx$/i.test(f.name);
       if (!zip && !ole || (xlsxName && ole)) {
         fileInfo('err', '<b>✕ ' + esc(f.name) + ' · ' + kb(f.size) + '</b><span>엑셀 파일 형식이 아닙니다 — 문서보안(DRM) 또는 비밀번호로 암호화된 파일로 보입니다. 엑셀에서는 열리지만 브라우저는 읽을 수 없습니다.</span>' +
-          '<span class="sheets">해결: DRM 해제(반출) 후 다시 올리거나, 드라이브·메일 원본을 DRM 없는 PC/폰에서 받아 올려 주세요.</span>');
+          '<span class="sheets">해결: 원본을 드라이브에 넣고 위 "드라이브에서 선택"으로 불러오세요.</span>');
         return;
       }
       try {
@@ -379,9 +395,40 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
           $('pick').hidden = false;
         }
       } catch (err) { fileInfo('err', '<b>✕ ' + esc(f.name) + ' · ' + kb(f.size) + '</b><span>엑셀로 읽지 못했습니다: ' + esc(err && err.message ? err.message : err) + '</span>'); }
-    };
-    rd.readAsArrayBuffer(f);
   }
+
+  // ---------- 드라이브에서 선택 (업로드가 막힌 PC용) ----------
+  var driveT = null;
+  async function driveSearch() {
+    var q = $('driveQ').value.trim();
+    $('driveList').innerHTML = '<span class="small muted">드라이브에서 엑셀 파일을 찾는 중…</span>';
+    try {
+      var j = await get({ section: 'files', q: q });
+      if (q !== $('driveQ').value.trim()) return;
+      var day = function (t) { var d = new Date(t); return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); };
+      $('driveList').innerHTML = j.files.length ? j.files.map(function (x) {
+        return '<button type="button" role="listitem" data-fid="' + esc(x.id) + '" data-fname="' + esc(x.name) + '" data-fsize="' + x.size + '"><b>' + esc(x.name) + '</b><span>' + day(x.modified) + ' · ' + kb(x.size) + '</span></button>';
+      }).join('') : '<span class="small muted">' + (q ? '"' + esc(q) + '"이(가) 들어간 엑셀 파일이 없습니다' : '최근 120일 안에 수정한 엑셀 파일이 없습니다. 파일명으로 검색해 보세요') + '</span>';
+    } catch (e) {
+      $('driveList').innerHTML = '<span class="small" style="color:var(--bad)">드라이브 목록을 불러오지 못했습니다: ' + esc(e.message) + (/unknown_section/.test(e.message) ? ' — 서버(Apps Script)를 최신 코드로 새 버전 배포해 주세요' : '') + '</span>';
+    }
+  }
+  $('btnDrive').addEventListener('click', function () { var pn = $('drivePanel'); pn.hidden = !pn.hidden; if (!pn.hidden) { $('driveQ').focus(); driveSearch(); } });
+  $('driveClose').addEventListener('click', function () { $('drivePanel').hidden = true; });
+  $('driveQ').addEventListener('input', function () { clearTimeout(driveT); driveT = setTimeout(driveSearch, 350); });
+  $('driveList').addEventListener('click', async function (e) {
+    var b = e.target.closest('[data-fid]'); if (!b) return;
+    var f = { name: b.getAttribute('data-fname'), size: +b.getAttribute('data-fsize') };
+    $('pick').hidden = true; $('loadMsg').textContent = '';
+    fileInfo('busy', '<b>⏳ ' + esc(f.name) + '</b><span>' + kb(f.size) + ' · 드라이브에서 받는 중…</span>');
+    try {
+      var j = await get({ section: 'file', id: b.getAttribute('data-fid') });
+      var bin = atob(j.b64), u8 = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+      $('drivePanel').hidden = true;
+      processBytes({ name: j.name, size: j.size }, u8);
+    } catch (err) { fileInfo('err', '<b>✕ ' + esc(f.name) + '</b><span>드라이브에서 받지 못했습니다: ' + esc(err.message) + '</span>'); }
+  });
   async function open(track) {
     if (!pending) return;
     $('loadMsg').textContent = track.name + ' 정산으로 판별했습니다. 이 정산의 설정을 불러오는 중…';
@@ -414,7 +461,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     var id = $('pickSel').value, t = DESK.tracks.filter(function (x) { return x.id === id; })[0];
     if (t) open(t);
   });
-  $('btnNew').addEventListener('click', function () { goHome(); $('loadMsg').textContent = ''; $('fileInfo').hidden = true; });
+  $('btnNew').addEventListener('click', function () { goHome(); $('loadMsg').textContent = ''; $('fileInfo').hidden = true; $('drivePanel').hidden = true; });
   // 복사 버튼은 눌린 자리에서 "복사됨"으로 잠깐 바뀐다 (모든 정산 공통)
   document.addEventListener('click', function (e) {
     var b = e.target.closest('[data-copy], [data-copyval]');

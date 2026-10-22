@@ -59,13 +59,14 @@ var TRUZ = (function () {
     var iY = col('Year'), iM = col('Month'), iB = col('byBizCat.'), iCh = col('byChannel'), iP = col('Royalty%'),
       iS = col('SalesTotalAmt.(SubjecttoRoyalty)'), iR = col('RoyaltyTotalAmt.');
     var iC = h.indexOf('Currency'), iX = h.indexOf('ExchangeRate');
-    var data = [], fx = {};
+    var data = [], fx = {}, chBiz = {};
     rows.slice(hi + 1).forEach(function (r) {
       if (r[iY] == null || r[iR] == null || r[iR] === '') return;
       var mo = MON[String(r[iM]).slice(0, 3)];
       if (!mo) return;
       var ym = parseInt(r[iY], 10) + '-' + pad(mo);
       data.push({ ym: ym, biz: N(r[iB]), channel: String(r[iCh] || '').trim(), pct: num(r[iP]), sales: num(r[iS]), roy: num(r[iR]) });
+      var chk = N(r[iCh]); if (chk) { chBiz[chk] = chBiz[chk] || {}; chBiz[chk][N(r[iB])] = 1; }
       if (iC >= 0 && iX >= 0 && r[iC] && r[iX] != null) {
         var k = ym + '|' + String(r[iC]).trim();
         fx[k] = fx[k] || {}; fx[k][r[iX]] = (fx[k][r[iX]] || 0) + 1;
@@ -80,12 +81,18 @@ var TRUZ = (function () {
     if (!detName) throw new Error('품목 상세(Detail) 시트를 찾지 못했습니다.');
     var dr = rowsOf(wb.Sheets[detName]); var dh = dr[0].map(N);
     var dc = function (alts) { for (var i = 0; i < alts.length; i++) { var j = dh.indexOf(alts[i]); if (j >= 0) return j; } throw new Error('Detail 시트에 "' + alts[0] + '" 열이 없습니다.'); };
-    var jSet = dc(['정산월']), jCty = dc(['국가']), jCh = dc(['유통경로', '채널']), jChN = dc(['채널명']), jMk = dc(['제작방식']),
+    var jSet = dc(['정산월']), jCty = dc(['국가']), jCh = dh.indexOf('유통경로'), jChN = dc(['채널명']), jMk = dc(['제작방식']),
       jNm = dc(['제품명']), jQty = dc(['주문수량']), jCur = dc(['거래통화']), jFee = dc(['수수료']);
+    // 유통경로(온라인·오프라인·B2B) 열은 26.3Q 파일부터 빠짐 → Data 시트 "by Channel"의 사업구분(Online·Offline·B2B)으로 대신 판정
+    var chOf = function (r) {
+      if (jCh >= 0) return String(r[jCh] || '').trim();
+      var b = chBiz[N(r[jChN])] || {};
+      return b.B2B ? 'B2B' : b.Online ? '온라인' : b.Offline ? '오프라인' : '';
+    };
     var detail = [];
     dr.slice(1).forEach(function (r) {
       if (r[jSet] == null || r[jSet] === '') return;
-      detail.push({ ym: String(r[jSet]).trim(), country: String(r[jCty] || '').trim(), channel: String(r[jCh] || '').trim(),
+      detail.push({ ym: String(r[jSet]).trim(), country: String(r[jCty] || '').trim().replace(/^([A-Z]{2})\d+$/, '$1'), channel: chOf(r),
         channelName: String(r[jChN] || '').trim(), make: String(r[jMk] || '').trim(), name: String(r[jNm] || '').trim(),
         qty: num(r[jQty]), cur: String(r[jCur] || '').trim().toUpperCase(), fee: num(r[jFee]), raw: r });
     });
@@ -133,6 +140,8 @@ var TRUZ = (function () {
     });
     Object.keys(missingRate).forEach(function (k) { flags.push({ level: 'bad', text: k.replace('|', ' ') + ' 환율이 비어 있습니다 — 환율 표에 입력해 주세요' }); });
     var unN = Object.keys(unmapped).length;
+    var autoN = Object.keys(opt.auto || {}).length;
+    if (autoN) flags.push({ level: 'warn', text: '새 제품 ' + autoN + '개를 캐릭터 기준으로 자동 매핑했습니다 — 아래 "새 제품 매핑"에서 확인 후 저장하세요' });
     if (unN) flags.push({ level: 'bad', text: '멤버 매핑이 없는 제품 ' + unN + '개 (' + fmt(Object.values(unmapped).reduce(function (a, b) { return a + b; }, 0)) + '원) — 아래 "새 제품 매핑"에서 지정' });
     if (g12) flags.push({ level: 'warn', text: '"트레저 12인" 제품 ' + fmt(g12) + '원을 트레저(10인) 프로젝트로 합산했습니다 — 회계팀 처리 기준 확인 권장' });
 
@@ -261,7 +270,27 @@ var TRUZ = (function () {
     return { wb: wb, rows: aoa.slice(3) };
   }
 
-  return { setConfig: setConfig, setMembers: setMembers, buildErpUpload: buildErpUpload, buildReview: buildReview, N: N, CATS: CATS, MEMBERS: MEMBERS, MEMBER_NAMES: MEMBER_NAMES, parse: parse, compute: compute, fmt: fmt, approval: approval, pad: pad };
+  // 새 제품 → 멤버 자동 추정: 기존 매핑에서 같은 낱말(캐릭터명 등)이 들어간 제품이 한 멤버로 90% 이상 몰려 있으면 그 멤버로 본다
+  // (예: "TZ_히쿤_26 FARM_인형 키링" → 히쿤이 들어간 기존 제품 126개 중 123개가 아사히). 단체 굿즈·일반 낱말은 쏠림이 없어 걸리지 않는다
+  function suggest(names, map) {
+    var toks = function (n) { return String(n).toUpperCase().split(/[^0-9A-Z\uAC00-\uD7A3]+/).filter(function (t) { return (t.length >= 2 || /[\uAC00-\uD7A3]/.test(t)) && !/^\d+$/.test(t); }); };
+    var idx = {};
+    Object.keys(map).forEach(function (k) { var m = map[k]; if (!m || /인$/.test(m)) return; toks(k).forEach(function (t) { idx[t] = idx[t] || {}; idx[t][m] = (idx[t][m] || 0) + 1; }); });
+    var tot = {}; Object.keys(map).forEach(function (k) { toks(k).forEach(function (t) { tot[t] = (tot[t] || 0) + 1; }); });
+    var out = {};
+    names.forEach(function (n) {
+      var best = null;
+      toks(n).forEach(function (t) {
+        var d = idx[t]; if (!d) return;
+        var top = Object.keys(d).sort(function (a, b) { return d[b] - d[a]; })[0], share = d[top] / tot[t];
+        if (d[top] >= 10 && share >= 0.9 && (!best || share > best.share)) best = { m: top, share: share, tok: t, n: d[top], of: tot[t] };
+      });
+      if (best) out[n] = best;
+    });
+    return out;
+  }
+
+  return { suggest: suggest, setConfig: setConfig, setMembers: setMembers, buildErpUpload: buildErpUpload, buildReview: buildReview, N: N, CATS: CATS, MEMBERS: MEMBERS, MEMBER_NAMES: MEMBER_NAMES, parse: parse, compute: compute, fmt: fmt, approval: approval, pad: pad };
 })();
 
 
@@ -397,7 +426,7 @@ function mount(ctx) {
 
   // ---------- 계산 ----------
   function recompute() {
-    if (S.mode === 'live') S.result = TRUZ.compute(S.parsed, S.rates, S.map, {});
+    if (S.mode === 'live') S.result = TRUZ.compute(S.parsed, S.rates, S.map, { auto: S.auto });
     render();
   }
 
@@ -458,12 +487,14 @@ function mount(ctx) {
   }
 
   function renderMapFix() {
-    var box = $('mapFix'), un = S.result.unmapped || {}, names = Object.keys(un);
+    var box = $('mapFix'), un = Object.assign({}, S.result.unmapped || {}), auto = S.auto || {};
+    S.result.rows.forEach(function (x) { if (auto[x.d.name] && x.krw) un[x.d.name] = (un[x.d.name] || 0) + x.krw; });
+    var names = Object.keys(un).sort(function (a, b) { return (auto[a] ? 1 : 0) - (auto[b] ? 1 : 0) || un[b] - un[a]; });
     if (!names.length) { box.hidden = true; box.innerHTML = ''; return; }
     box.hidden = false;
     var opts = TRUZ.MEMBER_NAMES.concat(['트레저 12인']).map(function (m) { return '<option>' + esc(m) + '</option>'; }).join('');
     box.innerHTML = '<div class="block"><header><h3>새 제품 매핑 (' + names.length + '개)</h3><button class="btn sm primary" id="btnMap">매핑 적용' + (online ? '·저장' : '') + '</button></header><div class="body"><p class="small muted" style="margin:0">제품명의 캐릭터(루루=하루토, 본본=준규, 칠리=최현석, 포동=소정환, 라우=윤재혁, 로미=지훈 등)를 보고 멤버를 고르세요. 저장하면 다음 분기부터 자동 적용됩니다.</p><div class="tablebox"><table><tr><th>제품명</th><th class="n">KRW</th><th>멤버</th></tr>' +
-      names.map(function (n, i) { return '<tr><td>' + esc(n) + '</td><td class="n num">' + fmt(un[n]) + '</td><td><select id="map-' + i + '" data-name="' + esc(n) + '"><option value="">선택</option>' + opts + '</select></td></tr>'; }).join('') + '</table></div></div></div>';
+      names.map(function (n, i) { return '<tr><td>' + esc(n) + (auto[n] ? ' <span class="small muted">· 자동: "' + esc(auto[n].tok) + '" 기존 ' + auto[n].of + '개 중 ' + auto[n].n + '개</span>' : '') + '</td><td class="n num">' + fmt(un[n]) + '</td><td><select id="map-' + i + '" data-name="' + esc(n) + '"><option value="">선택</option>' + (auto[n] ? opts.replace('<option>' + esc(auto[n].m) + '</option>', '<option selected>' + esc(auto[n].m) + '</option>') : opts) + '</select></td></tr>'; }).join('') + '</table></div></div></div>';
     $('btnMap').onclick = applyMappings;
   }
 
@@ -532,11 +563,13 @@ function mount(ctx) {
     $('pSummary').innerHTML = esc('2. [매출 요약] - TRUZ ' + qi.yy + '년 ' + qi.q + '분기 총 로열티 : ' + fmt(r.supply) + ' 원') + (r.roundNote ? '<br><b style="color:var(--warn)">' + esc(r.roundNote) + '</b> <span class="small muted">(카테고리 표 아래에 붙여 넣기)</span>' : '');
     $('catTitle').textContent = '[매출 상세 표 - 상품 카테고리별 로열티 분류_' + qi.yy + '.' + qi.q + 'Q] (단위 : 원)';
     $('memTitle').textContent = '[매출 상세 표 - 멤버별 국가별 OEM 로열티 분류_' + qi.yy + '.' + qi.q + 'Q] (단위 : 원)';
-    var mlab = qi.months.map(function (m) { return (+m.slice(5)) + '월'; });
-    var crow = TRUZ.CATS.map(function (c) { var vals = qi.months.map(function (m) { return (r.catMonthR || {})[c.key] ? (r.catMonthR[c.key][m] || 0) : Math.round(r.catMonth[c.key][m] || 0); }); return [c.label].concat(vals.map(fmt), [fmt(vals.reduce(function (a, b) { return a + b; }, 0))]); });
-    var colT = qi.months.map(function (m) { return TRUZ.CATS.reduce(function (a, c) { return a + Math.round(r.catMonth[c.key][m] || 0); }, 0); });
+    // 분기 밖 판매월(예: 26.3Q 파일의 6월 라이선스 정산분)도 열로 보여야 표 합계 = 공급가액
+    var cms = Array.from(new Set(qi.months.concat(S.parsed.quarter.months))).sort();
+    var mlab = cms.map(function (m) { return (+m.slice(0, 4) !== qi.y ? m.slice(2, 4) + '.' : '') + (+m.slice(5)) + '월'; });
+    var crow = TRUZ.CATS.map(function (c) { var vals = cms.map(function (m) { return (r.catMonthR || {})[c.key] ? (r.catMonthR[c.key][m] || 0) : Math.round(r.catMonth[c.key][m] || 0); }); return [c.label].concat(vals.map(fmt), [fmt(vals.reduce(function (a, b) { return a + b; }, 0))]); });
+    var colT = cms.map(function (m) { return TRUZ.CATS.reduce(function (a, c) { return a + Math.round(r.catMonth[c.key][m] || 0); }, 0); });
     crow.push(['TTL'].concat(colT.map(fmt), [fmt(colT.reduce(function (a, b) { return a + b; }, 0))]));
-    TABLES.catTable = { head: ['구분'].concat(mlab, ['TTL']), rows: crow, numCols: [1, 2, 3, 4], sumLast: true };
+    TABLES.catTable = { head: ['구분'].concat(mlab, ['TTL']), rows: crow, numCols: cms.map(function (m, i) { return i + 1; }).concat([cms.length + 1]), sumLast: true };
     $('catTable').innerHTML = tableHtml(TABLES.catTable);
     var ctys = r.countries.length ? r.countries : ['CN', 'JP', 'LS', 'US'];
     var mrows = Object.keys(r.memCty).filter(function (m) { return r.mem[m]; }).map(function (m) { return [m].concat(ctys.map(function (c) { return fmt(r.memCty[m][c] || 0); }), [fmt(r.mem[m])]); });
@@ -623,7 +656,7 @@ function mount(ctx) {
       var k = t.getAttribute('data-k'), v = t.value.trim();
       S.rates[k] = v === '' ? null : parseFloat(v.replace(/,/g, ''));
       t.classList.toggle('empty', v === '');
-      clearTimeout(recompute._t); recompute._t = setTimeout(function () { S.result = TRUZ.compute(S.parsed, S.rates, S.map, {}); renderFlags(); renderAmt(); renderPum(); renderErp(); }, 250);
+      clearTimeout(recompute._t); recompute._t = setTimeout(function () { S.result = TRUZ.compute(S.parsed, S.rates, S.map, { auto: S.auto }); renderFlags(); renderAmt(); renderPum(); renderErp(); }, 250);
     }
   });
   $('inSettle').addEventListener('change', function () { S.inputs.settle = this.value; renderPum(); });
@@ -636,7 +669,7 @@ function mount(ctx) {
     var sels = document.querySelectorAll('#mapFix select'), adds = [];
     sels.forEach(function (s) { if (s.value) adds.push([s.getAttribute('data-name'), s.value]); });
     if (!adds.length) { toast('멤버를 하나 이상 선택해 주세요'); return; }
-    adds.forEach(function (a) { S.map[TRUZ.N(a[0])] = a[1]; });
+    adds.forEach(function (a) { S.map[TRUZ.N(a[0])] = a[1]; if (S.auto) delete S.auto[a[0]]; });
     recompute();
     if (online) {
       post('saveMapping', { items: adds.map(function (a) { return { name: a[0], member: a[1] }; }) })
@@ -699,7 +732,12 @@ function mount(ctx) {
   $('erpDesc').textContent = '품의 승인 후 입력합니다. 계정 로열티매출_초상(' + P.account + ') · 회계부서 광고IP사업팀(' + P.dept + ') · 거래처 ' + V.name + '(' + V.code + ') · 국가구분 KR. 순서는 직전 분기 ERP 전표와 같습니다. 세금계산서 등록 시 "부가세만 생성"을 체크하고, 거래내역 저장 후 결재를 생성합니다.';
   var p = TRUZ.parse(ctx.wb);
   S.parsed = p; S.rates = Object.assign({}, p.rates); S.quarter = p.quarter; S.fileName = ctx.fileName;
-  S.result = TRUZ.compute(p, S.rates, S.map, {});
+  // 처음 보는 제품은 캐릭터 기준으로 자동 매핑(이번 작업에만 적용, "매핑 적용·저장" 시 DB 저장)
+  var fresh = Array.from(new Set(p.detail.filter(function (d) { return d.channel === '온라인' || d.channel === '오프라인'; }).map(function (d) { return d.name; })))
+    .filter(function (n) { return !S.map[TRUZ.N(n)]; });
+  S.auto = TRUZ.suggest(fresh, S.map);
+  Object.keys(S.auto).forEach(function (n) { S.map[TRUZ.N(n)] = S.auto[n].m; });
+  S.result = TRUZ.compute(p, S.rates, S.map, { auto: S.auto });
   render();
   return { quarter: p.quarter.label, note: p.quarter.label + ' · Data ' + p.data.length + '행 · 품목 상세 ' + p.detail.length + '행' };
 }

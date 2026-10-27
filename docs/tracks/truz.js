@@ -166,12 +166,21 @@ var TRUZ = (function () {
     CATS.forEach(function (c) { if (c.erp) lines.push({ kind: 'cat', key: c.key, label: c.erp, member: '트레저 10인', raw: cat[c.key], amt: catR[c.key] }); });
     MEMBERS.forEach(function (x) { lines.push({ kind: 'oem', key: 'OEM:' + x.m, label: 'OEM제품 ' + x.erp, member: x.m, raw: mem[x.m] || 0, amt: Math.round(mem[x.m] || 0) }); });
     if (mem['(미매핑)']) lines.push({ kind: 'oem', key: 'OEM:(미매핑)', label: 'OEM제품 (미매핑)', member: '(미매핑)', raw: mem['(미매핑)'], amt: Math.round(mem['(미매핑)']) });
+    // ERP 줄 합계 = 공급가액: 줄별 반올림 합이 공급가액과 다르면, 반올림으로 가장 많이 깎인(또는 올라간) 줄부터 1원씩 보정
+    // (26.3Q: STICKER 70,932.03·아사히 2,991,976.50 → 각 +1원, 실무 보정과 동일. 26.2Q처럼 차이가 없으면 그대로)
+    var erpAdj = supply - lines.reduce(function (a, l) { return a + l.amt; }, 0), adjusted = [];
+    if (erpAdj) {
+      var sg = erpAdj > 0 ? 1 : -1, ord = lines.map(function (l, i) { return i; }).sort(function (x, y) { return sg * ((lines[y].raw - lines[y].amt) - (lines[x].raw - lines[x].amt)); });
+      for (var k = 0; k < Math.abs(erpAdj); k++) { var L = lines[ord[k % ord.length]]; L.amt += sg; L.adj = (L.adj || 0) + sg; }
+      lines.forEach(function (l) { if (l.adj) adjusted.push(l.label + ' ' + (l.adj > 0 ? '+' : '') + l.adj + '원'); });
+    }
     var lineSum = lines.reduce(function (a, l) { return a + l.amt; }, 0);
     var memRSum = lines.filter(function (l) { return l.kind === 'oem'; }).reduce(function (a, l) { return a + l.amt; }, 0);
     var tableDiff = supply - tableSum, erpDiff = supply - lineSum;
     var diffCats = CATS.filter(function (c) { return catDiff[c.key]; }).map(function (c) { return c.label.replace(/[()]/g, '').replace(/\s+/g, ' ').trim(); });
     var roundNote = tableDiff ? '※ ' + (diffCats.length ? diffCats.join(', ') + ' 매출 관련, ' : '') + '소수점 반올림 건으로 인해 ' + Math.abs(tableDiff) + '원 차이 발생.' : '';
-    if (!tableDiff && !erpDiff) flags.push({ level: 'ok', text: '원 단위 반올림 일치 — 공급가액 ' + fmt(supply) + '원 = 카테고리 표 합계 = ERP 줄 합계' });
+    if (!tableDiff && !erpDiff && !adjusted.length) flags.push({ level: 'ok', text: '원 단위 반올림 일치 — 공급가액 ' + fmt(supply) + '원 = 카테고리 표 합계 = ERP 줄 합계' });
+    if (adjusted.length) flags.push({ level: 'ok', text: 'ERP 줄 반올림 보정 — ' + adjusted.join(', ') + ' → ERP 줄 합계 = 공급가액 ' + fmt(supply) + '원 (총금액 ' + fmt(supply + Math.floor(supply * 0.1)) + '원)' });
     if (tableDiff) flags.push({ level: 'warn', text: '체크: 카테고리 표 합계 ' + fmt(tableSum) + '원 vs 공급가액 ' + fmt(supply) + '원 (' + (tableDiff > 0 ? '+' : '') + tableDiff + '원, ' + (diffCats.join('·') || '반올림') + '). 수정하지 않고 품의에 주석으로 명시 — 회계팀 조정' });
     if (erpDiff) flags.push({ level: 'warn', text: '체크: ERP 줄 합계 ' + fmt(lineSum) + '원 vs 공급가액 ' + fmt(supply) + '원 (' + (erpDiff > 0 ? '+' : '') + erpDiff + '원' + (memRSum !== catR.OEM ? ', 멤버 반올림 합계 ' + fmt(memRSum) + '원 vs OEM ' + fmt(catR.OEM) + '원' : '') + '). 금액란은 공급가액 그대로, 회계팀 조정' });
     // 부가세: 원 미만 절사 (26.1Q 품의·BPTG 26.2Q 전표로 확인)

@@ -297,14 +297,15 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261027a"></script>
+<script src="config.js?v=20261028a"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261027a"></script>
-<script src="tracks/truz.js?v=20261027a"></script>
-<script src="tracks/thegirls.js?v=20261027a"></script>
+<script src="tracks/truz-review.js?v=20261028a"></script>
+<script src="tracks/truz.js?v=20261028a"></script>
+<script src="tracks/thegirls.js?v=20261028a"></script>
+<script src="tracks/line.js?v=20261028a"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };

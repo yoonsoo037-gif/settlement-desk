@@ -275,7 +275,10 @@ var TRUZ = (function () {
         grp.grp, l.kind === 'cat' ? ERP.commonArtist : grp.art, serial(qi.start), serial(qi.end), 'KR', null, null, null, null, null]);
     });
     var wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), 'AR거래내역엑셀업로드 List');
+    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    // 관리항목1·2(정산 시작·종료일)는 기존 AR 원본처럼 날짜 서식 — 일반 숫자면 ERP가 46204처럼 숫자로 읽는다
+    for (var ri = 3; ri < aoa.length; ri++) [20, 21].forEach(function (ci) { var c = ws[XLSX.utils.encode_cell({ r: ri, c: ci })]; if (c && c.t === 'n') c.z = 'm/d/yy'; });
+    XLSX.utils.book_append_sheet(wb, ws, 'AR거래내역엑셀업로드 List');
     return { wb: wb, rows: aoa.slice(3) };
   }
 

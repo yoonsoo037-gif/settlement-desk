@@ -330,8 +330,8 @@
       // 거래일자 기본값: 대상 분기 종료 다음 달 말일(26.2Q → 7/31, 직전 세금계산서 작성일 기준). 세금계산서 작성일이 다르면 수정
       var tx = I.tx || (R.to ? TG.monthEnd(TG.addMonths(R.to.slice(0, 7), 1)) : ''), pay = tx ? TG.monthEnd(TG.addMonths(tx.slice(0, 7), 1)) : '';
       if ($('inTx').value !== tx) $('inTx').value = tx;
-      // 23% 재쉐어 문구 기본값: 정산 기간이 게임 서비스 종료일 이전이면 포함, 이후 기간이 섞이면 제외
-      var reshare = I.reshare != null ? I.reshare : (!T.serviceEnd || R.to <= T.serviceEnd);
+      // 23% 재쉐어 문구: 기본 포함(기존 매입품의 상세내역 양식). 필요할 때만 "제외"로 끈다
+      var reshare = I.reshare != null ? I.reshare : true;
       $('inReshare').value = reshare ? '1' : '0';
       TXT.title = "[매입품의] " + label + " 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)";
       $('pTitle').textContent = TXT.title;
@@ -341,11 +341,12 @@
       var re = Math.round(R.gross * (T.reshareRate || 0.23));
       TXT.detail = '1. 내용 : 블랙핑크더게임 OST "THE GIRLS" ' + R.rangeText.replace(' ~ ', '~') + ' 음원 로열티 정산(' + (T.detailName || T.name || '') + ')\n\n2. 기간 : ' + R.rangeText + '\n' +
         '※ BPTG 계약기간 종료로 인해 해당 정산 이후 판매월 기준 ' + (T.cutoffText || '') + ' 내 데이터만 추가 정산 예정\n\n' +
-        '3. 매입금액(VAT제외, 원천징수전) : ' + fmt(R.supply) + ' 원\n\n4. 지급예정일(카드번호) : 품의 결재 후 자금집행일\n\n5. 상세내역 :\n' +
-        '- 총 매출 : ' + fmt(R.net) + '원(원천세 제외)\n- 총 정산액 : ' + fmt(R.gross) + '원 (VAT 포함)\n- YG X 테이크원 체결 부속합의서 근거 음원 순매출 ' + rate + ' 쉐어' +
-        (reshare ? '\n- 해당 음원 매출 지급분은 게임 "총 매출"에 포함 예정으로, 추후 테이크원 → YG 분기별 정산 시 재차 ' + Math.round((T.reshareRate || 0.23) * 100) + '% 매출 YG에 쉐어 예정 * 본 정산액 ' + fmt(R.gross) + '원의 ' + Math.round((T.reshareRate || 0.23) * 100) + '%인 약 ' + (re >= 10000 ? Math.round(re / 10000) + '만원' : fmt(re) + '원') + ' 예상' : '') +
-        (I.endNote ? '\n※ 본 정산을 끝으로 테이크원 측에 배분되는 THE GIRLS 음원 로열티 수익은 없습니다.' : '') +
-        (I.note ? '\n※ ' + I.note : '') +
+        '3. 매입금액(VAT제외, 원천징수전) : ' + fmt(R.supply) + ' 원\n\n4. 지급예정일(카드번호) : 품의 결재 후 자금집행일\n\n5. 상세내역 :\n\n' +
+        // 상세내역 들여쓰기·줄바꿈은 기존 매입품의(우희호 님 작성분) 본문 그대로
+        '    - 총 매출 : ' + fmt(R.net) + '원(원천세 제외)\n\n    - 총 정산액 : ' + fmt(R.gross) + '원 (VAT 포함)\n\n    - YG X 테이크원 체결 부속합의서 근거 음원 순매출 ' + rate + ' 쉐어' +
+        (reshare ? '\n\n    - 해당 음원 매출 지급분은 게임 "총 매출"에 포함 예정으로, 추후 테이크원 → YG 분기별 정산 시\n      재차 ' + Math.round((T.reshareRate || 0.23) * 100) + '% 매출 YG에 쉐어 예정\n\n      * 본 정산액 ' + fmt(R.gross) + '원의 ' + Math.round((T.reshareRate || 0.23) * 100) + '%인 약 ' + (re >= 10000 ? Math.round(re / 10000) + '만원' : fmt(re) + '원') + ' 예상' : '') +
+        (I.endNote ? '\n\n    ※ 본 정산을 끝으로 테이크원 측에 배분되는 THE GIRLS 음원 로열티 수익은 없습니다.' : '') +
+        (I.note ? '\n\n    ※ ' + I.note : '') +
         '\n\n6. 첨부파일 :\n- 음원 매출 데이터 1부.\n- 세금계산서 1부.\n\n7. 지급처 정보(원화)';
       $('pDetail').textContent = TXT.detail;
       TABLES.pay = { head: ['지급처', '실지급액', '발행일자', '은행', '계좌번호', '예금주'], rows: [[T.name || '', fmt(R.gross), dotDate(tx) || '입력 필요', T.bank || '', T.account || '', T.holder || '']], numCols: [1] };

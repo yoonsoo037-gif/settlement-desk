@@ -242,6 +242,15 @@
   }
   var PRJ = function (P) { return [['회계부서', P.deptName + ' (' + P.dept + ')'], ['프로젝트', P.proj + ' (' + P.projCode + ')'], ['계정', P.account + ' (' + P.accountCode + ')'], ['아티스트(그룹)', P.group + ' (' + P.groupCode + ')'], ['아티스트(개인)', P.artist + ' (' + P.artistCode + ')'], ['제작구분', P.prod]]; };
   var today = function () { var d = new Date(); return d.getFullYear() + '-' + TG.pad(d.getMonth() + 1) + '-' + TG.pad(d.getDate()); };
+  // 사업소득관리 지급예정일: 회사 지급일인 둘째 주 목요일 중, 회계일자와 오늘 이후 가장 빠른 날 (인수인계 녹음 · ERP 캡처 26.3.12 기준)
+  var secondThu = function (from) {
+    var ym = from.slice(0, 7);
+    for (var k = 0; k < 3; k++, ym = TG.addMonths(ym, 1)) {
+      var d = new Date(+ym.slice(0, 4), +ym.slice(5, 7) - 1, 1), off = (4 - d.getDay() + 7) % 7 + 8, v = ym + '-' + TG.pad(off);
+      if (v >= from) return v;
+    }
+    return '';
+  };
   var dotDate = function (d) { return d ? d.slice(2).replace(/-/g, '.') : ''; };
 
   // ================= ① 테이크원 (분기) =================
@@ -288,7 +297,10 @@
       '<div class="block"><header><h3>잔여 예산 확인 · 매입 내역</h3><button class="btn sm" data-copy="buy">전체 복사</button></header><div class="body"><dl class="kv" id="pBuy"></dl></div></div>' +
       '</section></div>' +
 
-      '<div class="tabpanel" id="p-erp" hidden><section class="panel"><div class="ph"><h2>ERP 매입 전표 (AP)</h2><p>품의 승인 후 입력합니다. 세금계산서 등록에서 테이크원이 발행한 승인번호를 연계하고 "부가세만 생성"으로 처리한 뒤, 거래내역에 아래 한 줄을 입력합니다.</p></div>' +
+      '<div class="tabpanel" id="p-erp" hidden><section class="panel"><div class="ph"><h2>ERP 매입 전표 (AP)</h2><p>품의 승인 후 ERP → 신청 업무 → 회계 → 매입에서 입력합니다 (인수인계 녹음 44:44~48:46 순서).</p></div>' +
+      '<ol class="small" style="margin:0 0 12px 18px;line-height:1.7"><li>매입 추가 → 회계일자·증빙(전자세금계산서)·AP 유형(미지급금 일반) 입력</li><li>거래처 테이크원 선택(계좌 자동) → 지급예정일·통화(KRW) → 기안문서에 매입품의 연동</li>' +
+      '<li>세금계산서 등록: 테이크원이 발행한 세금계산서 <b>승인번호 연계</b>(발행 후 하루쯤 지나야 뜰 수 있음) → "1" 입력 + <b>부가세만 생성</b></li>' +
+      '<li>거래내역: 부가세대급금은 자동, 아래 계정·프로젝트·차변 금액·제작구분 입력 → <b>저장</b></li><li><b>결재 생성</b> → 결재 라인(재무관리팀 합의 → 팀 리더) 지정 후 상신</li></ol>' +
       '<div class="block"><header><h3>입력값</h3><button class="btn sm" data-copy="erpTable">표 복사</button></header><div class="body"><div class="tablebox"><table id="erpTable"></table></div></div></div></section></div>';
 
     function recalc() { R = TG.takeone(S.rows, T.rate || 0.15); render(); }
@@ -358,7 +370,7 @@
       TXT.all = [TXT.title, '', TXT.basic, '', '2. 기타(상세내역)', TXT.detail, tsv(TABLES.pay), '', TXT.buy].join('\n');
 
       // ERP
-      var erp = [['AP 유형', '미지급금 일반'], ['증빙', '전자세금계산서 (승인번호 연계 · 부가세만 생성)'], ['거래처', (T.name || '') + ' (' + (T.code || '') + ')'], ['회계일자', tx || '입력 필요'], ['지급예정일', pay || '-'], ['통화/환율', 'KRW / 1'],
+      var erp = [['AP 유형', '미지급금 일반'], ['증빙', '전자세금계산서 (승인번호 연계 · 부가세만 생성)'], ['거래처', (T.name || '') + ' (' + (T.code || '') + ') · 계좌 자동'], ['회계일자', tx || '입력 필요'], ['지급예정일', (pay || '-') + ' (말일 · 직전 건 기준)'], ['통화/환율', 'KRW / 1'],
         ['계정코드', P.account + ' (' + P.accountCode + ')'], ['차변 금액', fmt(R.supply)], ['부가세대급금', fmt(R.vat) + ' (세금계산서 연계로 자동)'], ['미지급금 합계', fmt(R.gross)]].concat(PRJ(P).filter(function (x) { return x[0] !== '계정'; }))
         .concat([['적요', label + " 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)"], ['기안문서', '위 매입품의 연동']]);
       TABLES.erpTable = { head: ['항목', '값'], rows: erp, numCols: [] };
@@ -472,7 +484,9 @@
       '<div class="block"><header><h3>잔여 예산 확인 · 매입 내역 (작가별)</h3><button class="btn sm" data-copy="buy">전체 복사</button></header><div class="body"><pre class="fmt" id="pBuy"></pre></div></div>' +
       '</section></div>' +
 
-      '<div class="tabpanel" id="p-erp" hidden><section class="panel"><div class="ph"><h2>ERP 사업기타소득 · 사업소득관리</h2><p>매입 처리가 아니라 사업소득관리 화면에서 작가별로 1건씩 입력합니다(기안문서 선택 → 저장 → 전표발행 → 결재 생성).</p></div>' +
+      '<div class="tabpanel" id="p-erp" hidden><section class="panel"><div class="ph"><h2>ERP 사업기타소득 · 사업소득관리</h2><p>매입 처리가 아니라 ERP → 신청 업무 → 사업기타소득 → 사업소득관리 → 추가에서 <b>작가별로 1건씩(총 2건)</b> 입력합니다 (인수인계 녹음 1:03~1:09 · ERP 화면캡쳐 참고.png 기준).</p></div>' +
+      '<ol class="small" style="margin:0 0 12px 18px;line-height:1.7"><li>매입처 선택(계좌·은행 자동) → 지급예정일은 <b>둘째 주 목요일</b></li><li>기안문서선택으로 매입품의 연동 → 소득구분·회계일자 입력</li>' +
+      '<li>환율은 자동값이 틀릴 때가 많아 <b>서울외국환중개 매매기준율을 직접 입력</b> → 파란 칸(지급액) 입력, 나머지는 자동</li><li>회계부서·프로젝트·적요·계정코드·제작구분 확인 → <b>저장 → 결재 생성</b></li></ol>' +
       '<div class="block"><header><h3>작가별 입력값</h3><button class="btn sm" data-copy="erpTable">표 복사</button></header><div class="body"><div class="tablebox"><table id="erpTable"></table></div></div></div></section></div>';
 
     var halves = []; for (var y = S.y + 1; y >= 2024; y--) { halves.push([y, 2], [y, 1]); }
@@ -525,6 +539,7 @@
 
       // 품의
       var tx = S.tx, pay = tx ? TG.monthEnd(TG.addMonths(tx.slice(0, 7), 1)) : '';
+      var erpPay = tx ? secondThu(tx > today() ? tx : today()) : '';
       TXT.title = "[매입품의] 블랙핑크더게임 OST 'THE GIRLS' " + hf.kor + " 음원 로열티 수익 작가 배분 건";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '비거주자'], ['외국환 신고 필요여부', '직전 품의 선택값과 동일'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'], ['전체계약금액 (VAT제외)', fx ? fmt2(R.totalU) : '-'], ['계약기간', WC.contract || ''], ['통화 종류', 'USD']];
@@ -559,11 +574,11 @@
       // ERP 사업소득관리
       var head = ['항목'].concat(order.map(function (w) { return w.key; }));
       var rowsE = [['매입처 (소득자)', function (w) { return w.erpName + ' (' + w.code + ')'; }], ['비거주자 국가', function (w) { return w.country || 'US'; }], ['은행 / SWIFT', function (w) { return '999 기타 / ' + (w.swift || ''); }], ['계좌번호', function (w) { return w.account || ''; }],
-        ['지급예정일', function () { return pay || '-'; }], ['기안문서', function () { return '위 매입품의 선택'; }], ['소득구분', function () { return 'F61 사용료소득'; }], ['세율', function () { return '0.100'; }], ['회사부담', function () { return '아니오'; }],
-        ['회계일자', function () { return tx || '입력 필요'; }], ['통화 / 환율', function () { return 'USD / ' + (fx ? fmt2(fx) : '-'); }], ['지급액 = 소득금액 (KRW)', function (w) { return fmt(w.totalK); }], ['법인세', function (w) { return fmt(w.corp); }], ['주민세', function (w) { return fmt(w.local); }],
+        ['지급예정일', function () { return erpPay ? erpPay + ' (둘째 주 목요일)' : '-'; }], ['기안문서', function () { return '위 매입품의 선택'; }], ['소득구분', function () { return 'F61 사용료소득'; }], ['세율', function () { return '0.100'; }], ['회사부담', function () { return '아니오'; }],
+        ['회계일자', function () { return tx || '입력 필요'; }], ['통화 / 환율', function () { return 'USD / ' + (fx ? fmt2(fx) + ' (자동값 말고 이 값 직접 입력)' : '-'); }], ['지급액 = 소득금액 (KRW)', function (w) { return fmt(w.totalK); }], ['법인세', function (w) { return fmt(w.corp); }], ['주민세', function (w) { return fmt(w.local); }],
         ['실지급액 (KRW)', function (w) { return fmt(w.pay); }], ['외화AP (USD)', function (w) { return fx ? fmt2(w.payU) : '-'; }], ['예술인고용보험', function () { return '미적용'; }], ['세금처리', function () { return '지급처리시 원천세공제 · 예수금만 생성'; }],
         ['회계부서', function () { return P.dept + ' ' + P.deptName; }], ['프로젝트', function () { return P.projCode + ' ' + P.proj; }], ['계정코드', function () { return P.accountCode + ' ' + P.account; }], ['아티스트그룹 / 아티스트', function () { return P.groupCode + ' ' + P.group + ' / ' + P.artistCode + ' ' + P.artist; }],
-        ['제작구분', function () { return P.prod; }], ['적요', function () { return P.proj + ' 매출 해외작가 정산금 (' + hf.label + ')'; }]];
+        ['제작구분', function () { return P.prod; }], ['적요', function (w) { return P.proj.replace(/'/g, '') + ' 매출 해외작가 정산금_' + w.key; }]];
       TABLES.erpTable = { head: head, rows: rowsE.map(function (r) { return [r[0]].concat(order.map(function (w) { return r[1](w); })); }), numCols: [] };
       $('erpTable').innerHTML = tableHtml(TABLES.erpTable);
       $('btnSave').disabled = !fx || !R.sel.length;

@@ -15,7 +15,7 @@ docs/
   tracks/truz.js     ← TRUZ 정산 모듈 (판별 · 계산 로직 · 정산 / 품의 복붙 / ERP 전표 화면)
   tracks/thegirls.js ← BPTG OST 'THE GIRLS' 매입 정산 모듈 2종 (테이크원 분기 · 해외 작가 반기), 서버 트랙 thegirls 공유
   tracks/line.js     ← LINE 프리미엄 정산 모듈 (월, JPY)
-  tracks/ygp.js      ← YGP MD 로열티 · 응원봉 디자인권 정산 모듈 2종 (월), 서버 트랙 ygp 공유
+  tracks/ygp.js      ← YGP MD 로열티 · 응원봉 디자인권 정산 모듈 (월, 원본·빅뱅 제외본 등 여러 파일 함께 처리, multi)
   truz/index.html    ← 예전 주소 호환용 (첫 화면으로 이동)
 apps-script/
   Code.gs            ← 백엔드 코드 사본 (실제 배포는 회사 구글 계정에서)

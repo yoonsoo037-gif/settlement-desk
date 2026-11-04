@@ -6,7 +6,7 @@
  * 처리하므로 이 스크립트로 보내지지 않는다. 공개 저장소에는 회사 데이터가 없고, 데이터는 전부 이 스크립트가
  * 읽는 비공개 시트에만 있다.
  * 회사 PC에서 브라우저 업로드가 막힌 경우를 위해, 내 드라이브의 엑셀 원본(.xlsx/.xls)을 목록으로 보여주고
- * 고른 파일 내용을 내려준다(files / file). 엑셀 파일(.xlsx/.xls/.xlsb)만 대상이며 다른 형식은 거절한다.
+ * 고른 파일 내용을 내려준다(files / file). 폴더를 따라 들어가며 고를 수 있게 폴더별 하위 폴더·엑셀 목록도 내려준다(folder). 엑셀 파일(.xlsx/.xls/.xlsb)만 대상이며 다른 형식은 거절한다.
  *
  * DB 시트 탭 규칙: <트랙코드>_매핑 / <트랙코드>_이력 / <트랙코드>_확정 / <트랙코드>_설정 (예: TRUZ_매핑)
  * 새 트랙을 추가할 때는 TRACKS 에 한 줄 추가하고 같은 이름 규칙으로 탭 4개를 만든다.
@@ -46,6 +46,7 @@ function doGet(e) {
     if (p.section === 'config') return out_(getConfig_(p.track));
     if (p.section === 'files') return out_(listFiles_(p.q));
     if (p.section === 'file') return out_(getFile_(p.id));
+    if (p.section === 'folder') return out_(listFolder_(p.id));
     return out_({ ok: false, error: 'unknown_section' });
   } catch (err) {
     return out_({ ok: false, error: 'server_error', message: String(err) });
@@ -139,6 +140,30 @@ function listFiles_(q) {
   }
   list.sort(function (a, b) { return b.modified - a.modified; });
   return { ok: true, files: list.slice(0, 50) };
+}
+
+// ?section=folder&id=... — 폴더의 경로(내 드라이브부터)·하위 폴더·엑셀 파일. id가 없으면 내 드라이브
+function listFolder_(id) {
+  var root = DriveApp.getRootFolder(), rootId = root.getId();
+  var f = id ? DriveApp.getFolderById(String(id)) : root;
+  var path = [], cur = f, guard = 0;
+  while (cur && guard++ < 15) {
+    var isRoot = cur.getId() === rootId;
+    path.unshift({ id: isRoot ? '' : cur.getId(), name: isRoot ? '내 드라이브' : cur.getName() });
+    if (isRoot) break;
+    var ps = cur.getParents(); cur = ps.hasNext() ? ps.next() : null;
+  }
+  var folders = [], fi = f.getFolders();
+  while (fi.hasNext() && folders.length < 300) { var d = fi.next(); folders.push({ id: d.getId(), name: d.getName(), modified: d.getLastUpdated().getTime() }); }
+  folders.sort(function (a, b) { return a.name < b.name ? -1 : a.name > b.name ? 1 : 0; });
+  var files = [], it = f.getFiles();
+  while (it.hasNext() && files.length < 300) {
+    var x = it.next();
+    if (XL_MIMES_.indexOf(String(x.getMimeType()).toLowerCase()) < 0) continue;
+    files.push({ id: x.getId(), name: x.getName(), size: x.getSize(), modified: x.getLastUpdated().getTime() });
+  }
+  files.sort(function (a, b) { return b.modified - a.modified; });
+  return { ok: true, id: id || '', path: path, folders: folders, files: files };
 }
 
 // ?section=file&id=... — 엑셀 파일 내용을 base64로 (20MB 이하)

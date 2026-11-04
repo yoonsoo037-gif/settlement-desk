@@ -67,8 +67,6 @@ var YGP = (function () {
     var v10 = Math.round(inv.supply * 0.1);
     flags.push({ level: 'ok', text: '세액 ' + fmt(inv.vat) + '원은 정산서 값 그대로 사용 (공급가액 × 10% = ' + fmt(v10) + '원' + (inv.vat === v10 ? ', 일치' : ', 아티스트별 반올림 합이라 ' + (inv.vat - v10 > 0 ? '+' : '') + (inv.vat - v10) + '원 차이 — 정상') + ')' });
     if (p.actorTotal) flags.push({ level: 'warn', text: '"-배우" 표 합계가 ' + fmt(p.actorTotal) + '원입니다 — 보통 0원이라 확인 필요(가수 표만 반영됨)' });
-    var big = p.artists.filter(function (x) { return /빅뱅/.test(x.name) && x.supply; })[0];
-    if (big) flags.push({ level: 'warn', text: '빅뱅 행(' + fmt(big.supply) + '원)이 있습니다 — 26.8월분부터 빅뱅 마스터 계약 체결 전이라 "빅뱅제외" 버전 정산서로 처리했습니다. 이 파일이 최종본인지 확인' });
     var lines = [], unmapped = [];
     if (p.kind === 'md') {
       var have = {}; p.artists.forEach(function (x) { have[K(x.name)] = x; });
@@ -111,7 +109,33 @@ var YGP = (function () {
     return { wb: wb, rows: aoa.slice(3) };
   }
 
-  return { parse: parse, compute: compute, memo: memo, buildErpUpload: buildErpUpload, fmt: fmt, monthEnd: monthEnd, addMonths: addMonths };
+  // 빅뱅: YGP-빅뱅 마스터 계약 날인 전까지 모든 품의·ERP는 빅뱅 제외 (26.8월분부터, YGP가 원본(빅뱅 포함)·빅뱅 제외 정산서 2종 전달)
+  var isBig = function (name) { return /빅뱅/.test(name); };
+  function bigOf(p) { var r = p.artists.filter(function (x) { return isBig(x.name); }); return r.length ? r.reduce(function (a, x) { return { name: '빅뱅', qty: a.qty + x.qty, supply: a.supply + x.supply, vat: a.vat + x.vat, total: a.total + x.total }; }, { qty: 0, supply: 0, vat: 0, total: 0 }) : null; }
+  // 원본(빅뱅 포함)에서 빅뱅 행을 빼 빅뱅 제외 기준을 만든다 (26.8·9월: 결과가 YGP 빅뱅 제외 정산서와 1원까지 같음)
+  function exclude(p) {
+    var b = bigOf(p) || { qty: 0, supply: 0, vat: 0, total: 0 }, inv = p.invoice;
+    var q = Object.assign({}, p, { artists: p.artists.filter(function (x) { return !isBig(x.name); }), invoice: Object.assign({}, inv, { supply: inv.supply - b.supply, vat: inv.vat - b.vat, total: inv.total - b.total }) });
+    if (p.artistTotal) q.artistTotal = { qty: p.artistTotal.qty - b.qty, supply: p.artistTotal.supply - b.supply, vat: p.artistTotal.vat - b.vat, total: p.artistTotal.total - b.total };
+    return q;
+  }
+  // 원본 − 빅뱅 = 빅뱅 제외본 대조 (발행내역 + 아티스트별 수량·공급가액·부가세·공급대가)
+  function compare(orig, excl) {
+    var d = exclude(orig), out = [], bm = {};
+    if (orig.ym !== excl.ym) out.push('정산월이 다릅니다(원본 ' + orig.ym + ' / 제외본 ' + excl.ym + ')');
+    if (orig.invoice.date !== excl.invoice.date) out.push('세금계산서 작성일이 다릅니다(원본 ' + orig.invoice.date + ' / 제외본 ' + excl.invoice.date + ')');
+    ['supply', 'vat', 'total'].forEach(function (k) { if (d.invoice[k] !== excl.invoice[k]) out.push('발행내역 ' + { supply: '공급가액', vat: '세액', total: '합계' }[k] + ': 원본−빅뱅 ' + fmt(d.invoice[k]) + ' ≠ 제외본 ' + fmt(excl.invoice[k])); });
+    excl.artists.forEach(function (x) { bm[K(x.name)] = x; });
+    d.artists.forEach(function (x) {
+      var y = bm[K(x.name)]; delete bm[K(x.name)];
+      if (!y) { if (x.supply) out.push(x.name + ': 원본에만 있음(' + fmt(x.supply) + '원)'); return; }
+      ['qty', 'supply', 'vat', 'total'].forEach(function (k) { if (x[k] !== y[k]) out.push(x.name + ' ' + { qty: '수량', supply: '공급가액', vat: '부가세', total: '공급대가' }[k] + ': 원본 ' + fmt(x[k]) + ' ≠ 제외본 ' + fmt(y[k])); });
+    });
+    Object.keys(bm).forEach(function (k) { if (bm[k].supply) out.push(bm[k].name + ': 제외본에만 있음(' + fmt(bm[k].supply) + '원)'); });
+    return { diffs: out, rows: d.artists.length };
+  }
+
+  return { parse: parse, compute: compute, memo: memo, buildErpUpload: buildErpUpload, bigOf: bigOf, exclude: exclude, compare: compare, fmt: fmt, monthEnd: monthEnd, addMonths: addMonths };
 })();
 if (typeof module !== 'undefined') module.exports = YGP;
 if (typeof DESK === 'undefined') return;
@@ -119,6 +143,7 @@ if (typeof DESK === 'undefined') return;
 // ---------------- 화면 ----------------
 var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
 var fmt = YGP.fmt;
+var KIND = { md: { name: 'MD 로열티', short: 'MD', mail: 'MD 제품 로열티' }, cb: { name: '응원봉 디자인권', short: '응원봉', mail: '응원봉 디자인권 및 상표권 사용료' } };
 function tabsHtml(tabs) {
   return '<div class="tabs-in" role="tablist" aria-label="작업 단계">' + tabs.map(function (t, i) {
     return '<button class="tab" role="tab" id="t-' + t[0] + '" data-tab="' + t[0] + '" aria-selected="' + (i ? 'false' : 'true') + '"><span>' + (i + 1) + '</span>' + t[1] + '</button>';
@@ -142,6 +167,7 @@ function statusHtml(fl) {
   var nb = fl.filter(function (f) { return f.level === 'bad'; }).length, nw = fl.filter(function (f) { return f.level === 'warn'; }).length, lvl = nb ? 'bad' : nw ? 'warn' : 'ok';
   return { cls: 'status ' + lvl, html: '<b>' + (nb ? '조치 필요 ' + nb + '건' : nw ? '체크 ' + nw + '건' : '검증 이상 없음') + '</b><span>' + esc((fl.filter(function (f) { return f.level === lvl; })[0] || {}).text || '') + '</span>' };
 }
+var tsv = function (t) { return [t.head].concat(t.rows).map(function (r) { return r.join('\t'); }).join('\n'); };
 // 위임전결기준표(261006) — 사업부문 매출 품의
 function approval(supply) {
   if (supply < 5e6) return '500만원 미만 (합의종결): 기안 → 팀 리더(최종) · 합의: 재무관리팀 담당, 회계팀 담당';
@@ -150,81 +176,158 @@ function approval(supply) {
   return '3억원 이상: 기안 → 팀 리더 → 그룹 리더 · 합의: 재무관리팀·회계팀 담당 → 회계팀 리더 → CFO → 부문 대표 → 대표이사(최종)';
 }
 
+// 올린 파일(1~4개)을 MD/응원봉 × 원본(빅뱅 포함)/빅뱅 제외본으로 나누고, 빅뱅 제외 기준(base)을 정한다
+function group(files, cfg) {
+  var G = {}, flags = [];
+  files.forEach(function (f) {
+    var p = YGP.parse(f.wb), big = YGP.bigOf(p), role = big && (big.supply || big.qty) ? 'orig' : 'excl';
+    var g = G[p.kind] = G[p.kind] || { kind: p.kind, flags: [] };
+    if (g[role]) g.flags.push({ level: 'bad', text: (role === 'orig' ? '원본(빅뱅 포함)' : '빅뱅 제외본') + '이 2개 올라왔습니다: ' + g[role].file + ', ' + f.name + ' — 하나만 올려 주세요' });
+    g[role] = { p: p, file: f.name, big: big };
+  });
+  var yms = Object.keys(G).map(function (k) { var g = G[k]; return (g.excl || g.orig).p.ym; });
+  if (yms.some(function (y) { return y !== yms[0]; })) flags.push({ level: 'bad', text: 'MD·응원봉 파일의 정산월이 다릅니다: ' + yms.join(', ') });
+  ['md', 'cb'].forEach(function (k) {
+    var g = G[k]; if (!g) return;
+    var nm = KIND[k].name;
+    if (g.orig && g.excl) {
+      var c = YGP.compare(g.orig.p, g.excl.p);
+      if (c.diffs.length) g.flags.push({ level: 'bad', text: nm + ' 원본 − 빅뱅 ≠ 빅뱅 제외본 (' + c.diffs.length + '건): ' + c.diffs.slice(0, 6).join(' · ') + (c.diffs.length > 6 ? ' 외' : '') });
+      else g.flags.push({ level: 'ok', text: nm + ' 원본 − 빅뱅(' + fmt(g.orig.big.supply) + '원) = 빅뱅 제외본: 발행내역(공급가액·세액·합계)과 아티스트 ' + c.rows + '명 수량·공급가액·부가세·공급대가 모두 일치' });
+      g.base = g.excl.p;
+    } else if (g.excl) {
+      g.base = g.excl.p;
+      g.flags.push({ level: 'warn', text: nm + ' 원본(빅뱅 포함) 정산서가 없습니다 — 빅뱅 제외본으로 산출물을 만들었고, 원본 대조와 회계팀 빅뱅 메일은 원본을 함께 올려야 완성됩니다' });
+    } else {
+      g.base = YGP.exclude(g.orig.p);
+      g.flags.push({ level: 'warn', text: nm + ' 빅뱅 제외본이 없습니다 — 원본에서 빅뱅 행(' + fmt(g.orig.big.supply) + '원)을 빼 산출물을 만들었습니다. YGP 빅뱅 제외 정산서를 받으면 함께 올려 대조해 주세요' });
+    }
+    g.R = YGP.compute(g.base, cfg);
+  });
+  return { G: G, flags: flags, ym: yms[0] };
+}
+
 function mount(ctx) {
   var $ = function (id) { return document.getElementById(id); };
-  var CFG = (ctx.data && ctx.data.cfg) || {}, P = CFG.PROJECT || {}, PUM = CFG.PUM || {};
-  var p = YGP.parse(ctx.wb), R = YGP.compute(p, CFG), TXT = {}, TABLES = {};
-  var md = p.kind === 'md', mNum = +p.ym.slice(5), inv = p.invoice;
-  var key = (md ? 'MD ' : '응원봉 ') + p.ym, saved = (ctx.data.saved || {})[key];
-  var title = '[매출품의] YGP MD 로열티 ' + mNum + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료');
-  // 입금예정일: 거래일자(세금계산서 작성일)의 3개월 뒤 말일 — 26.8월분 품의(8/31 → 11/30) 기준
-  var pay = inv.date ? YGP.monthEnd(YGP.addMonths(inv.date.slice(0, 7), PUM.payMonths || 3)) : '';
+  var CFG = (ctx.data && ctx.data.cfg) || {}, P = CFG.PROJECT || {}, PUM = CFG.PUM || {}, MAIL = CFG.MAIL || {};
+  var files = ctx.files && ctx.files.length ? ctx.files : [{ name: ctx.fileName, wb: ctx.wb }];
+  var X = group(files, CFG), G = X.G, kinds = ['md', 'cb'].filter(function (k) { return G[k]; });
+  var ym = X.ym, mNum = +ym.slice(5), TXT = {}, TABLES = {}, S = { note: '' };
+  var saved = ctx.data.saved || {};
 
-  ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산'], ['pum', '품의 복붙'], ['erp', 'ERP 전표']]);
+  ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산·검증'], ['pum', '품의 복붙'], ['erp', 'ERP 전표'], ['mail', '회계팀 메일']]);
+  var sec = function (k, body) { return '<section class="panel"><div class="ph"><h2>' + KIND[k].name + ' · ' + ym + '</h2></div>' + body + '</section>'; };
   ctx.root.innerHTML =
     '<div class="tabpanel" id="p-calc"><section class="panel dash"><div class="tiles" id="tiles"></div><div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div>' +
-    '<details class="fold vfold" open><summary>정산서 숫자 검증</summary><div class="flags" id="flags"></div></details></section>' +
-    '<section class="panel"><div class="ph"><h2>아티스트별 ' + (md ? 'MD 로열티' : '응원봉 사용료') + ' → ERP 줄</h2><p>원본 "항목별정산내역_요약" 시트 "② 아티스트별 - 가수" 표 기준입니다 ("제품매출" 시트 피벗은 특수채널 조정 전 숫자라 쓰지 않습니다).</p></div><div class="tablebox"><table id="lineTable"></table></div></section>' +
-    '<details class="panel fold logic"><summary><b>적용 중인 정산 로직</b> <span class="small muted">YGP_MD_응원봉_ERP업로드_자동화.xlsx · 26.7~9월 실제 AR 기준</span></summary><ol>' +
-    '<li><b>금액</b>: 정산서 "① YG ENT 발행내역"의 공급가액·세액·합계를 그대로 씁니다. 세액은 아티스트별 반올림 합이라 정확히 10%가 아닐 수 있습니다.</li>' +
-    '<li><b>ERP 줄</b>: ' + (md ? '아티스트별 공급가액 = 대변금액. 매핑표 순서·코드(프로젝트/그룹/아티스트)로 변환. 원본 "BABYMONSTER" = ERP "BABYMONSTER_라미제외"(6인), "BABYMONSTER(라미포함)" = ERP "BABYMONSTER"(7인), "WINNER(위너)(민호제외)" = "WINNER(위너)_민호제외".' : '아티스트별 공급가액 = 대변금액. 원본 순서, 프로젝트·그룹 "_"(공통), 트레저 → "트레저(10인)".') + ' 0원 행 제외.</li>' +
-    '<li><b>관리항목1·2</b>: 정산월 1일~말일 (' + (md ? '날짜 서식' : '8자리 숫자') + ').</li></ol></details></div>' +
+    '<details class="fold vfold" open><summary>원본 · 빅뱅 제외본 대조 및 정산서 숫자 검증</summary><div class="flags" id="flags"></div></details></section>' +
+    kinds.map(function (k) { return sec(k, '<p class="small muted" style="margin:0" id="files-' + k + '"></p><div class="tablebox"><table id="line-' + k + '"></table></div>'); }).join('') +
+    '<details class="panel fold logic"><summary><b>적용 중인 정산 로직</b> <span class="small muted">YGP_MD_응원봉_ERP업로드_자동화.xlsx · 26.7~9월 실제 AR · 빅뱅 별도 관리(26.9.10 회계팀 메일)</span></summary><ol>' +
+    '<li><b>빅뱅 제외</b>: YGP-빅뱅 마스터 계약 날인 전까지 모든 품의·ERP는 빅뱅 제외 기준. 원본(빅뱅 포함)과 빅뱅 제외본을 함께 올리면 "원본 − 빅뱅 행 = 제외본"을 발행내역·아티스트별로 대조합니다. 원본만 있으면 빅뱅 행을 빼서 계산합니다.</li>' +
+    '<li><b>금액</b>: 정산서 "① YG ENT 발행내역"의 공급가액·세액·합계(빅뱅 제외). 세액은 아티스트별 반올림 합이라 정확히 10%가 아닐 수 있습니다.</li>' +
+    '<li><b>ERP 줄</b>: "② 아티스트별 - 가수" 공급가액 = 대변금액. MD는 매핑표 순서·코드(원본 "BABYMONSTER" = ERP "BABYMONSTER_라미제외" 6인, "BABYMONSTER(라미포함)" = ERP "BABYMONSTER" 7인), 응원봉은 원본 순서·프로젝트 "_"·트레저 → "트레저(10인)". 0원 행 제외.</li>' +
+    '<li><b>관리항목1·2</b>: 정산월 1일~말일 (MD 날짜 서식 / 응원봉 8자리 숫자).</li></ol></details></div>' +
+    '<div class="tabpanel" id="p-pum" hidden>' + kinds.map(function (k) {
+      return sec(k, '<div class="allcopy"><button class="btn primary" data-copy="all-' + k + '">본문 전체 복사</button></div>' +
+        '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title-' + k + '">복사</button></header><div class="body"><div id="pTitle-' + k + '"></div></div></div>' +
+        '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic-' + k + '"></dl></div></div>' +
+        '<div class="block"><header><h3>3. 상세내역</h3><button class="btn sm" data-copy="detail-' + k + '">문구 복사</button></header><div class="body"><pre class="fmt" id="pDetail-' + k + '"></pre>' +
+        '<div class="row" style="justify-content:space-between"><b class="small">아티스트별 표 (빅뱅 제외)</b><button class="btn sm" data-copy="art-' + k + '">표 복사</button></div><div class="tablebox"><table id="art-' + k + '"></table></div>' +
+        '<pre class="fmt" id="pNote-' + k + '"></pre></div></div>');
+    }).join('') + '</div>' +
+    '<div class="tabpanel" id="p-erp" hidden>' + kinds.map(function (k) {
+      return sec(k, '<p class="small muted" style="margin:0">품의 승인 후 회계 → 매출 추가 → 기안문서 연동 → 세금계산서 등록(부가세만 생성) → 거래내역 엑셀 업로드에 아래 파일을 올리고 처리 → 결재. 업로드 후 날짜 칸이 에러 나는지 한 번 확인합니다.</p>' +
+        '<div class="row"><button class="btn primary" data-erp="' + k + '">AR 업로드 파일 내려받기</button><button class="btn" data-save="' + k + '">이 달 확정 저장</button><span class="small muted" id="erpMsg-' + k + '"></span></div>' +
+        '<div class="block"><header><h3>전표 헤더 · 세금계산서</h3><button class="btn sm" data-copy="head-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pHead-' + k + '"></dl></div></div>' +
+        '<div class="block"><header><h3>AR 줄 (업로드 파일 내용)</h3><button class="btn sm" data-copy="ar-' + k + '">표 복사</button></header><div class="body"><div class="tablebox"><table id="ar-' + k + '"></table></div></div></div>');
+    }).join('') + '</div>' +
+    '<div class="tabpanel" id="p-mail" hidden><section class="panel"><div class="ph"><h2>회계팀 빅뱅 매출 공유 메일</h2><p>빅뱅 계약 날인 전까지 매월 빅뱅 매출을 원본 정산서(빅뱅 포함)와 함께 공유합니다 (26.9.10 · 10.13 메일 양식).</p></div>' +
+    '<div class="form"><label style="grid-column:1/-1">YGP측 전달 특이사항 (없으면 비워 두세요 — 비우면 문단 생략)<textarea id="inNote" rows="3" style="width:100%;font:inherit;padding:8px;border-radius:10px;border:1.5px solid var(--line)"></textarea></label></div>' +
+    '<div class="block"><header><h3>받는 사람 · 참조 · 제목</h3><button class="btn sm" data-copy="mailHead">전체 복사</button></header><div class="body"><dl class="kv" id="mHead"></dl></div></div>' +
+    '<div class="block"><header><h3>본문</h3><button class="btn sm primary" data-copy="mailBody">본문 복사</button></header><div class="body"><pre class="fmt" id="mBody"></pre>' +
+    '<div id="mTables"></div></div></div></section></div>';
 
-    '<div class="tabpanel" id="p-pum" hidden><section class="panel"><div class="ph"><h2>매출품의 입력 내용</h2><p>직전 품의(26.8월분 ' + (md ? 'YGK-광고IP사업팀-26-0694' : 'YGK-광고IP사업팀-26-0691') + ') 양식·문구 그대로입니다. 첨부: 정산 원본 파일.</p></div>' +
-    '<div class="allcopy"><button class="btn primary" data-copy="all">본문 전체 복사</button></div>' +
-    '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title">복사</button></header><div class="body"><div id="pTitle"></div></div></div>' +
-    '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic"></dl></div></div>' +
-    '<div class="block"><header><h3>3. 상세내역</h3><button class="btn sm" data-copy="detail">문구 복사</button></header><div class="body"><pre class="fmt" id="pDetail"></pre>' +
-    '<div class="row" style="justify-content:space-between"><b class="small">아티스트별 표</b><button class="btn sm" data-copy="artTable">표 복사</button></div><div class="tablebox"><table id="artTable"></table></div>' +
-    '<pre class="fmt" id="pNote"></pre></div></div></section></div>' +
+  function renderKind(k) {
+    var g = G[k], p = g.base, R = g.R, inv = p.invoice, md = k === 'md';
+    var title = '[매출품의] YGP MD 로열티 ' + mNum + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료');
+    var pay = inv.date ? YGP.monthEnd(YGP.addMonths(inv.date.slice(0, 7), PUM.payMonths || 3)) : '';
+    var lineSum = R.lines.reduce(function (a, l) { return a + l.amt; }, 0);
+    $('files-' + k).textContent = '원본(빅뱅 포함): ' + (g.orig ? g.orig.file : '미첨부') + ' · 빅뱅 제외본: ' + (g.excl ? g.excl.file : '미첨부(원본에서 빅뱅 행 차감)') + (g.orig ? ' · 빅뱅 ' + fmt(g.orig.big.supply) + '원 별도 관리' : '');
+    TABLES['line-' + k] = { head: ['원본 표기', 'ERP 적요 표기', '공급가액(대변)'].concat(md ? ['프로젝트', '그룹', '아티스트'] : []), numCols: [2], sumLast: true,
+      rows: R.lines.map(function (l) { return [l.src, l.label, fmt(l.amt)].concat(md ? [l.proj, l.grp, l.art] : []); }).concat([['합계 (빅뱅 제외)', '', fmt(lineSum)].concat(md ? ['', '', ''] : [])]) };
+    $('line-' + k).innerHTML = tableHtml(TABLES['line-' + k]);
 
-    '<div class="tabpanel" id="p-erp" hidden><section class="panel"><div class="ph"><h2>ERP AR 업로드</h2><p>품의 승인 후 회계 → 매출 추가 → 기안문서 연동 → 세금계산서 등록(부가세만 생성) → 거래내역 엑셀 업로드에 아래 파일을 올리고 처리 → 결재. 업로드 후 날짜 칸이 에러 나는지 한 번 확인합니다.</p></div>' +
-    '<div class="row"><button class="btn primary" id="btnErp">AR 업로드 파일 내려받기</button><button class="btn" id="btnSave">이 달 확정 저장</button><span class="small muted" id="erpMsg"></span></div>' +
-    '<div class="block"><header><h3>전표 헤더 · 세금계산서</h3><button class="btn sm" data-copy="head">전체 복사</button></header><div class="body"><dl class="kv" id="pHead"></dl></div></div>' +
-    '<div class="block"><header><h3>AR 줄 (업로드 파일 내용)</h3><button class="btn sm" data-copy="arTable">표 복사</button></header><div class="body"><div class="tablebox"><table id="arTable"></table></div></div></div></section></div>';
-
-  function render() {
-    var flags = R.flags.slice();
-    if (saved) flags.push({ level: 'ok', text: '이 달(' + key + ')은 ' + (saved.savedAt || '') + ' 확정 저장된 기록이 있습니다 (' + fmt(saved.supply) + '원)' });
-    $('tiles').innerHTML = [['정산월', p.ym + (md ? ' · MD 로열티' : ' · 응원봉')], ['공급가액', fmt(inv.supply) + '원'], ['부가세', fmt(inv.vat) + '원'], ['총금액', fmt(inv.total) + '원'], ['ERP 줄', R.lines.length + '줄']]
-      .map(function (t) { return '<div class="tile"><span>' + esc(t[0]) + '</span><b>' + esc(t[1]) + '</b></div>'; }).join('');
-    var st = statusHtml(flags); $('statusLine').className = st.cls; $('statusLine').innerHTML = st.html;
-    $('amtMeta').textContent = '세금계산서 작성일 ' + (inv.date || '-') + ' · ' + ctx.fileName;
-    $('flags').innerHTML = flagsHtml(flags);
-    TABLES.lines = { head: ['원본 표기', 'ERP 적요 표기', '공급가액(대변)'].concat(md ? ['프로젝트', '그룹', '아티스트'] : []), numCols: [2], sumLast: true,
-      rows: R.lines.map(function (l) { return [l.src, l.label, fmt(l.amt)].concat(md ? [l.proj, l.grp, l.art] : []); }).concat([['합계', '', fmt(R.lines.reduce(function (a, l) { return a + l.amt; }, 0))].concat(md ? ['', '', ''] : [])]) };
-    $('lineTable').innerHTML = tableHtml(TABLES.lines);
-
-    // ---- 품의 ----
-    TXT.title = title; $('pTitle').textContent = title;
+    // 품의
+    TXT['title-' + k] = title; $('pTitle-' + k).textContent = title;
+    var attach = [g.orig ? g.orig.file : '', g.excl ? g.excl.file : ''].filter(Boolean).join(', ');
     var basic = [['비거주자 여부', '거주자'], ['외국환 신고 필요여부', '1.경상거래 해당없음 / 2.자본거래 해당없음'], ['거래처명', (P.vendorName || '') + ' (' + (P.vendor || '') + ')'], ['거래일자', inv.date || '-'],
       ['금액', fmt(inv.supply)], ['VAT', fmt(inv.vat)], ['총금액', fmt(inv.total)], ['프로젝트', '프로젝트공통 (_)'], ['입금예정일 (이내)', pay || '-'],
       ['아티스트(그룹)', '그룹공통 (_)'], ['아티스트(개인)', (P.artistName || '아티스트공통') + ' (' + (P.artist || '') + ')'], ['매출 종류', '로열티'], ['계약서 작성 여부', '작성'], ['통화종류', 'KRW'],
-      ['청구방법', '정산서 수령 후 일시'], ['발행정보', '세금계산서'], ['사업자등록번호', P.bizNo || ''], ['담당자 / 이메일', (P.contact || '') + ' / ' + (P.email || '')], ['관련문서', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(p.ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료')],
-      ['결재 라인 (위임전결)', approval(inv.supply)]];
-    TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
-    $('pBasic').innerHTML = kv(basic, 'basic');
+      ['청구방법', '정산서 수령 후 일시'], ['발행정보', '세금계산서'], ['사업자등록번호', P.bizNo || ''], ['담당자 / 이메일', (P.contact || '') + ' / ' + (P.email || '')],
+      ['첨부파일 (원본·빅뱅 제외본)', attach + (g.orig && g.excl ? '' : ' — ' + (g.orig ? '빅뱅 제외본' : '원본(빅뱅 포함)') + ' 미첨부')],
+      ['관련문서', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료')], ['결재 라인 (위임전결)', approval(inv.supply)]];
+    TXT['basic-' + k] = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
+    $('pBasic-' + k).innerHTML = kv(basic, 'basic-' + k);
     var d1 = '1. ' + mNum + '월 ' + (md ? 'MD 로열티 내역' : '가수 MD_응원봉 디자인상표권 사용료') + '\n\n- 총공급가액 : ' + fmt(inv.supply) + '원 - VAT : ' + fmt(inv.vat) + '원 - 총금액 : ' + fmt(inv.total) + '원\n\n2. 아티스트별 ' + (md ? 'MD 로열티 내역' : '응원봉 내역');
-    TABLES.artTable = { head: ['아티스트', '수량', '공급가액', '부가세', '공급대가'], numCols: [1, 2, 3, 4], sumLast: true,
+    TABLES['art-' + k] = { head: ['아티스트', '수량', '공급가액', '부가세', '공급대가'], numCols: [1, 2, 3, 4], sumLast: true,
       rows: p.artists.map(function (x) { return [x.name, fmt(x.qty), fmt(x.supply), fmt(x.vat), fmt(x.total)]; }).concat([['합계', fmt(R.S.qty), fmt(R.S.supply), fmt(R.S.vat), fmt(R.S.total)]]) };
     var note = '3. 참고사항 ' + ((md ? PUM.mdNote : PUM.cbNote) || '');
-    TXT.detail = d1 + '\n\n' + [TABLES.artTable.head].concat(TABLES.artTable.rows).map(function (r) { return r.join('\t'); }).join('\n') + '\n\n' + note;
-    $('pDetail').textContent = d1; $('artTable').innerHTML = tableHtml(TABLES.artTable); $('pNote').textContent = note;
-    TXT.all = title + '\n\n' + TXT.basic + '\n\n3. 상세내역\n\n' + TXT.detail;
+    TXT['detail-' + k] = d1 + '\n\n' + tsv(TABLES['art-' + k]) + '\n\n' + note;
+    $('pDetail-' + k).textContent = d1; $('art-' + k).innerHTML = tableHtml(TABLES['art-' + k]); $('pNote-' + k).textContent = note;
+    TXT['all-' + k] = title + '\n\n' + TXT['basic-' + k] + '\n\n3. 상세내역\n\n' + TXT['detail-' + k];
 
-    // ---- ERP ----
+    // ERP
     var head = [['회계일자', inv.date || '-'], ['증빙구분', '전자세금계산서'], ['청구처', (P.vendorName || '') + ' (' + (P.vendor || '') + ')'], ['통화 / 환율', 'KRW / 1'],
-      ['제목', title.replace('[매출품의] ', '')], ['세금계산서 (부가세만 생성)', '공급가액 ' + fmt(inv.supply) + ' · 세액 ' + fmt(inv.vat) + ' · 합계 ' + fmt(inv.total) + ' (계산서일자 ' + (inv.date || '-') + ')'],
-      ['입금예정일', pay || '-'], ['결재조건', '입금계좌'], ['거래내역 엑셀 업로드', R.lines.length + '줄 · 대변 합계 ' + fmt(R.lines.reduce(function (a, l) { return a + l.amt; }, 0)) + '원']];
-    TXT.head = head.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
-    $('pHead').innerHTML = kv(head, 'head');
-    TABLES.arTable = { head: ['프로젝트', '그룹', '아티스트', '대변금액', '적요'], numCols: [3], sumLast: true,
-      rows: R.lines.map(function (l) { return [md ? l.proj : '_', md ? l.grp : '_', md ? l.art : (P.artist || ''), fmt(l.amt), YGP.memo(p, l)]; })
-        .concat([['합계', '', '', fmt(R.lines.reduce(function (a, l) { return a + l.amt; }, 0)), '']]) };
-    $('arTable').innerHTML = tableHtml(TABLES.arTable);
-    var blocked = R.flags.some(function (f) { return f.level === 'bad'; });
-    $('btnErp').disabled = false;
-    $('erpMsg').textContent = blocked ? '검증 "조치" 항목을 먼저 확인하세요 (파일은 내려받을 수 있습니다)' : '';
+      ['제목', title.replace('[매출품의] ', '')], ['세금계산서 (부가세만 생성)', '공급가액 ' + fmt(inv.supply) + ' · 세액 ' + fmt(inv.vat) + ' · 합계 ' + fmt(inv.total) + ' (계산서일자 ' + (inv.date || '-') + ', 빅뱅 제외)'],
+      ['입금예정일', pay || '-'], ['결재조건', '입금계좌'], ['거래내역 엑셀 업로드', R.lines.length + '줄 · 대변 합계 ' + fmt(lineSum) + '원']];
+    TXT['head-' + k] = head.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
+    $('pHead-' + k).innerHTML = kv(head, 'head-' + k);
+    TABLES['ar-' + k] = { head: ['프로젝트', '그룹', '아티스트', '대변금액', '적요'], numCols: [3], sumLast: true,
+      rows: R.lines.map(function (l) { return [md ? l.proj : '_', md ? l.grp : '_', md ? l.art : (P.artist || ''), fmt(l.amt), YGP.memo(p, l)]; }).concat([['합계', '', '', fmt(lineSum), '']]) };
+    $('ar-' + k).innerHTML = tableHtml(TABLES['ar-' + k]);
+    var blocked = g.flags.concat(R.flags, X.flags).some(function (f) { return f.level === 'bad'; });
+    $('erpMsg-' + k).textContent = blocked ? '검증 "조치" 항목을 먼저 확인하세요' : '';
+    return { title: title, pay: pay, inv: inv };
+  }
+
+  function renderMail() {
+    var mk = kinds.filter(function (k) { return G[k].orig; }), miss = kinds.filter(function (k) { return !G[k].orig; });
+    var subj = '[공유] 빅뱅관련 데이터 업데이트_YGP MD 로열티 ' + mNum + '월 정산의 건';
+    var to = (MAIL.to || []).join(', '), cc = (MAIL.cc || []).join(', ');
+    var head = [['받는 사람', to || '(DB YGP_설정 MAIL.to)'], ['참조', cc || '-'], ['제목', subj], ['첨부 (원본 정산서·빅뱅 포함)', mk.map(function (k) { return G[k].orig.file; }).join(', ') || '없음 — 원본을 함께 올려 주세요']];
+    TXT.mailHead = head.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
+    $('mHead').innerHTML = kv(head, 'mailHead');
+    var tbl = function (k) { var b = G[k].orig.big; return { head: ['아티스트', '수량', '공급가액', '부가세', '공급대가'], rows: [['빅뱅', fmt(b.qty), fmt(b.supply), fmt(b.vat), fmt(b.total)]], numCols: [1, 2, 3, 4] }; };
+    var order = ['md', 'cb'].filter(function (k) { return mk.indexOf(k) >= 0; });
+    var note = S.note.trim();
+    var body = (MAIL.greeting || '안녕하세요, 광고 IP 사업팀 김윤수입니다.') + '\n\n' +
+      '금일 YGP로부터 빅뱅 관련매출 전달받아\n' + mNum + '월 정산분 빅뱅 매출 아래와 같이 공유드리며, 원본정산서(빅뱅 포함) 파일 첨부드립니다.\n\n' +
+      (note ? '[YGP측 전달_특이사항]\n' + note + '\n\n' : '') +
+      order.map(function (k) { TABLES['mail-' + k] = tbl(k); return KIND[k].mail + '_' + mNum + '월 정산분\n' + tsv(TABLES['mail-' + k]); }).join('\n\n') +
+      '\n\n관련하여 문의사항은 언제든 말씀 부탁드립니다.\n\n감사합니다.\n\n' + (MAIL.sign || '김윤수 드림');
+    TXT.mailBody = order.length ? body : '';
+    $('mBody').textContent = order.length ? body : '원본 정산서(빅뱅 포함)를 올리면 빅뱅 매출 공유 메일이 만들어집니다. 지금은 빅뱅 제외본만 있습니다.';
+    $('mTables').innerHTML = order.map(function (k) { return '<div class="row" style="justify-content:space-between"><b class="small">' + esc(KIND[k].mail + '_' + mNum + '월 정산분') + '</b><button class="btn sm" data-copy="mail-' + k + '">표 복사</button></div><div class="tablebox"><table>' + tableHtml(TABLES['mail-' + k]) + '</table></div>'; }).join('') +
+      (miss.length && order.length ? '<p class="small" style="color:var(--bad)">' + esc(miss.map(function (k) { return KIND[k].name; }).join('·')) + ' 원본(빅뱅 포함)이 없어 메일에서 빠졌습니다.</p>' : '');
+  }
+
+  function render() {
+    var flags = X.flags.slice(), info = {};
+    kinds.forEach(function (k) {
+      info[k] = renderKind(k);
+      flags = flags.concat(G[k].flags, G[k].R.flags.map(function (f) { return { level: f.level, text: KIND[k].short + ' · ' + f.text }; }));
+      var sv = saved[(k === 'md' ? 'MD ' : '응원봉 ') + ym];
+      if (sv) flags.push({ level: 'ok', text: KIND[k].short + ' ' + ym + '은 ' + (sv.savedAt || '') + ' 확정 저장된 기록이 있습니다 (' + fmt(sv.supply) + '원)' });
+    });
+    if (!G.md || !G.cb) flags.push({ level: 'warn', text: (G.md ? '응원봉' : 'MD 로열티') + ' 정산서가 없습니다 — 같은 달 파일을 함께 올리면 품의·ERP·메일이 한 화면에 모두 만들어집니다' });
+    var tiles = [['정산월', ym + ' (빅뱅 제외)']];
+    kinds.forEach(function (k) { tiles.push([KIND[k].short + ' 공급가액', fmt(info[k].inv.supply) + '원']); tiles.push([KIND[k].short + ' 총금액', fmt(info[k].inv.total) + '원']); });
+    kinds.forEach(function (k) { if (G[k].orig) tiles.push([KIND[k].short + ' 빅뱅 (별도)', fmt(G[k].orig.big.supply) + '원']); });
+    $('tiles').innerHTML = tiles.map(function (t) { return '<div class="tile"><span>' + esc(t[0]) + '</span><b>' + esc(t[1]) + '</b></div>'; }).join('');
+    var st = statusHtml(flags); $('statusLine').className = st.cls; $('statusLine').innerHTML = st.html;
+    $('amtMeta').textContent = files.length + '개 파일 · ' + files.map(function (f) { return f.name; }).join(' · ');
+    $('flags').innerHTML = flagsHtml(flags);
+    renderMail();
+    return info;
   }
 
   // 복사·탭
@@ -234,24 +337,42 @@ function mount(ctx) {
     navigator.clipboard.writeText(text).then(function () { ctx.toast((label || '') + ' 복사했습니다'); }, function () { showFallback(text); });
   }
   function copyTable(t) {
-    var tsv = [t.head].concat(t.rows).map(function (r) { return r.join('\t'); }).join('\n');
     var html = '<table border="1" style="border-collapse:collapse">' + tableHtml(t).replace(/ class="[^"]*"/g, '') + '</table>';
     try {
       if (window.ClipboardItem && navigator.clipboard.write) {
-        navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([tsv], { type: 'text/plain' }) })])
-          .then(function () { ctx.toast('표를 복사했습니다 (표 서식 포함)'); }, function () { copyText(tsv, '표를'); });
+        navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([tsv(t)], { type: 'text/plain' }) })])
+          .then(function () { ctx.toast('표를 복사했습니다 (표 서식 포함)'); }, function () { copyText(tsv(t), '표를'); });
         return;
       }
     } catch (e) { }
-    copyText(tsv, '표를');
+    copyText(tsv(t), '표를');
   }
-  ctx.root.addEventListener('click', function (e) {
+  var info = render();
+  ctx.root.addEventListener('click', async function (e) {
     var b = e.target.closest('[data-copy]');
     if (b) { var k = b.getAttribute('data-copy'); if (TABLES[k]) copyTable(TABLES[k]); else if (TXT[k] != null) copyText(TXT[k], '내용을'); return; }
     var v = e.target.closest('[data-copyval]');
-    if (v) { var q = v.getAttribute('data-copyval').split(':'), line = (TXT[q[0]] || '').split('\n')[+q[1]] || ''; copyText(line.split('\t').slice(1).join('\t'), '값을'); }
+    if (v) { var q = v.getAttribute('data-copyval').split(':'), line = (TXT[q[0]] || '').split('\n')[+q[1]] || ''; copyText(line.split('\t').slice(1).join('\t'), '값을'); return; }
+    var d = e.target.closest('[data-erp]');
+    if (d) {
+      var kk = d.getAttribute('data-erp'), out = YGP.buildErpUpload(G[kk].base, G[kk].R, CFG);
+      ctx.saveFile((kk === 'md' ? '[md]' : '[응원]') + 'AR거래내역엑셀업로드_YGPMD' + (kk === 'md' ? '' : '_응원봉') + '_' + ym.replace('-', '.') + '(빅뱅제외).xlsx', XLSX.write(out.wb, { type: 'array', bookType: 'xlsx' }));
+      ctx.toast(KIND[kk].short + ' AR 업로드 파일을 내려받았습니다 (' + out.rows.length + '줄)'); return;
+    }
+    var sv = e.target.closest('[data-save]');
+    if (sv) {
+      var ks = sv.getAttribute('data-save'), g = G[ks], iv = info[ks].inv, key = (ks === 'md' ? 'MD ' : '응원봉 ') + ym;
+      try {
+        $('erpMsg-' + ks).textContent = '저장 중…';
+        await ctx.post('saveQuarter', { record: { quarter: key, supply: iv.supply, vat: iv.vat, gross: iv.total, settleMonth: ym, txDate: iv.date, payDate: info[ks].pay,
+          file: [g.orig ? g.orig.file : '', g.excl ? g.excl.file : ''].filter(Boolean).join(' + '), roundNote: g.orig ? '빅뱅 별도 ' + g.orig.big.supply : '',
+          lines: g.R.lines.map(function (l) { return { label: l.label, amt: l.amt }; }), royaltyTable: g.orig ? [g.orig.big] : [] } });
+        $('erpMsg-' + ks).textContent = ''; ctx.toast(key + ' 확정 저장했습니다');
+      } catch (er) { $('erpMsg-' + ks).textContent = '저장하지 못했습니다 (' + er.message + ')'; }
+    }
   });
-  var TABS = ['calc', 'pum', 'erp'];
+  $('inNote').addEventListener('input', function () { S.note = this.value; renderMail(); });
+  var TABS = ['calc', 'pum', 'erp', 'mail'];
   function showTab(t) {
     if (TABS.indexOf(t) < 0) t = TABS[0];
     TABS.forEach(function (k) { $('p-' + k).hidden = k !== t; $('t-' + k).setAttribute('aria-selected', k === t ? 'true' : 'false'); });
@@ -259,31 +380,13 @@ function mount(ctx) {
   }
   ctx.tabsEl.querySelectorAll('.tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); window.scrollTo(0, 0); }); });
   var st = null; try { st = localStorage.getItem('ygp.tab'); } catch (e) { }
-
-  $('btnErp').addEventListener('click', function () {
-    var out = YGP.buildErpUpload(p, R, CFG);
-    ctx.saveFile((md ? '[md]' : '[응원]') + 'AR거래내역엑셀업로드_YGPMD' + (md ? '' : '_응원봉') + '_' + p.ym.replace('-', '.') + '.xlsx', XLSX.write(out.wb, { type: 'array', bookType: 'xlsx' }));
-    ctx.toast('AR 업로드 파일을 내려받았습니다 (' + out.rows.length + '줄)');
-  });
-  $('btnSave').addEventListener('click', async function () {
-    try {
-      $('erpMsg').textContent = '저장 중…';
-      await ctx.post('saveQuarter', { record: { quarter: key, supply: inv.supply, vat: inv.vat, gross: inv.total, settleMonth: p.ym, txDate: inv.date, payDate: pay, file: ctx.fileName,
-        lines: R.lines.map(function (l) { return { label: l.label, amt: l.amt }; }), royaltyTable: [] } });
-      $('erpMsg').textContent = ''; ctx.toast(key + ' 확정 저장했습니다');
-    } catch (e) { $('erpMsg').textContent = '저장하지 못했습니다 (' + e.message + ')'; }
-  });
-
-  render(); showTab(st || 'calc');
-  return { quarter: p.ym + (md ? ' MD' : ' 응원봉'), note: '항목별정산내역_요약 · 아티스트 ' + p.artists.length + '명 · 작성일 ' + (inv.date || '-') };
+  showTab(st || 'calc');
+  return { quarter: ym + ' YGP', note: files.length + '개 파일 · ' + kinds.map(function (k) { return KIND[k].short + (G[k].orig ? ' 원본' : '') + (G[k].excl ? ' 제외본' : ''); }).join(' / ') };
 }
 
-var kindOf = function (wb) { try { return YGP.parse(wb).kind; } catch (e) { return ''; } };
-var why = function (wb) { if (!wb.Sheets['항목별정산내역_요약']) return ''; try { YGP.parse(wb); return ''; } catch (e) { return e.message; } };
-DESK.register({ id: 'ygp-md', server: 'ygp', name: 'YGP · MD 로열티', desc: '와이지플러스 굿즈 판매 MD 로열티 · 월 매출',
-  fileHint: 'YYYY.MM_Ent 정산_EUC_V*.xlsb (암호 제거본)', outputs: ['정산서 숫자 검증', '매출품의', 'ERP AR 업로드 파일'],
-  detect: function (wb) { return kindOf(wb) === 'md'; }, why: why, mount: mount });
-DESK.register({ id: 'ygp-cb', server: 'ygp', name: 'YGP · 응원봉 디자인권', desc: '와이지플러스 응원봉 디자인권·상표권 사용료 · 월 매출',
-  fileHint: 'YYYY.MM_응원봉 디자인권 및 상표권 사용료 정산_V*.xlsx', outputs: ['정산서 숫자 검증', '매출품의', 'ERP AR 업로드 파일'],
-  detect: function (wb) { return kindOf(wb) === 'cb'; }, why: why, mount: mount });
+DESK.register({ id: 'ygp', server: 'ygp', multi: true, name: 'YGP · MD 로열티 · 응원봉', desc: '와이지플러스 MD 로열티 · 응원봉 디자인권 사용료 · 월 매출 (빅뱅 제외)',
+  fileHint: 'Ent 정산(.xlsb) · 응원봉 디자인권 정산(.xlsx) — 원본(빅뱅 포함)·빅뱅 제외본 함께, 암호 제거본', outputs: ['원본·제외본 대조 검증', '매출품의 2건', 'ERP AR 업로드 파일 2개', '회계팀 빅뱅 매출 메일'],
+  detect: function (wb) { try { YGP.parse(wb); return true; } catch (e) { return false; } },
+  why: function (wb) { if (!wb.Sheets['항목별정산내역_요약']) return ''; try { YGP.parse(wb); return ''; } catch (e) { return e.message; } },
+  mount: mount });
 })();

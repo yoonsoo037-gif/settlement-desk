@@ -265,8 +265,8 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
       </div>
       <label class="drop" id="drop" for="file">
         <strong>정산 원본 엑셀을 끌어다 놓거나 클릭해서 선택</strong>
-        <span class="muted small">.xlsx / .xls · 파일 구조를 보고 정산 종류를 자동으로 고릅니다</span>
-        <input type="file" id="file" accept=".xlsx,.xls" hidden>
+        <span class="muted small">.xlsx / .xls / .xlsb · 파일 구조를 보고 정산 종류를 자동으로 고릅니다</span>
+        <input type="file" id="file" accept=".xlsx,.xls,.xlsb" hidden>
       </label>
       <div class="drivebar"><button class="btn primary" id="btnDrive" type="button">드라이브에서 선택</button><span class="small muted">회사 PC에서 업로드가 막히면, 드라이브에 넣은 원본을 바로 불러옵니다</span></div>
       <div class="drivebox" id="drivePanel" hidden>
@@ -297,22 +297,23 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261103a"></script>
+<script src="config.js?v=20261104a"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261103a"></script>
-<script src="tracks/truz.js?v=20261103a"></script>
-<script src="tracks/thegirls.js?v=20261103a"></script>
-<script src="tracks/line.js?v=20261103a"></script>
+<script src="tracks/truz-review.js?v=20261104a"></script>
+<script src="tracks/truz.js?v=20261104a"></script>
+<script src="tracks/thegirls.js?v=20261104a"></script>
+<script src="tracks/line.js?v=20261104a"></script>
+<script src="tracks/ygp.js?v=20261104a"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var APPS_SCRIPT_URL = (window.DESK_CONFIG || {}).appsScriptUrl || '';
   // 준비 중인 정산(모듈 등록 전). 로직은 드라이브 과거 정산을 분석·검증한 뒤 tracks/<id>.js 로 추가한다
-  var PLANNED = [{ id: 'ygp', name: 'YGP', desc: '로직 분석 후 등록 예정' }];
+  var PLANNED = [];
   var current = null;
 
   function toast(t) { var el = $('toast'); el.textContent = t; el.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { el.hidden = true; }, 2200); }

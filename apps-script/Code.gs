@@ -6,7 +6,7 @@
  * 처리하므로 이 스크립트로 보내지지 않는다. 공개 저장소에는 회사 데이터가 없고, 데이터는 전부 이 스크립트가
  * 읽는 비공개 시트에만 있다.
  * 회사 PC에서 브라우저 업로드가 막힌 경우를 위해, 내 드라이브의 엑셀 원본(.xlsx/.xls)을 목록으로 보여주고
- * 고른 파일 내용을 내려준다(files / file). 엑셀 파일만 대상이며 다른 형식은 거절한다.
+ * 고른 파일 내용을 내려준다(files / file). 엑셀 파일(.xlsx/.xls/.xlsb)만 대상이며 다른 형식은 거절한다.
  *
  * DB 시트 탭 규칙: <트랙코드>_매핑 / <트랙코드>_이력 / <트랙코드>_확정 / <트랙코드>_설정 (예: TRUZ_매핑)
  * 새 트랙을 추가할 때는 TRACKS 에 한 줄 추가하고 같은 이름 규칙으로 탭 4개를 만든다.
@@ -22,7 +22,7 @@
  * 코드 수정 후 재배포: 배포 → 배포 관리 → 연필(수정) → 새 버전 (URL 유지)
  */
 
-var TRACKS = { truz: 'TRUZ', thegirls: 'THEGIRLS', line: 'LINE' };
+var TRACKS = { truz: 'TRUZ', thegirls: 'THEGIRLS', line: 'LINE', ygp: 'YGP' };
 
 function prop_(k) { return PropertiesService.getScriptProperties().getProperty(k); }
 function db_() { return SpreadsheetApp.openById(prop_('DB_SPREADSHEET_ID')); }
@@ -123,7 +123,7 @@ function saveQuarter_(track, r) {
 }
 
 // ---------- 드라이브 엑셀 원본 (업로드가 막힌 PC용) ----------
-var XL_MIMES_ = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel'];
+var XL_MIMES_ = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/vnd.ms-excel.sheet.binary.macroenabled.12'];
 
 // ?section=files&q=검색어 — 최근 수정 순 엑셀 파일 최대 50개. 검색어가 없으면 최근 120일 안의 파일
 function listFiles_(q) {
@@ -144,7 +144,7 @@ function listFiles_(q) {
 // ?section=file&id=... — 엑셀 파일 내용을 base64로 (20MB 이하)
 function getFile_(id) {
   var f = DriveApp.getFileById(String(id || ''));
-  if (XL_MIMES_.indexOf(f.getMimeType()) < 0) return { ok: false, error: 'not_excel', message: '엑셀(.xlsx/.xls) 파일만 불러올 수 있습니다' };
+  if (XL_MIMES_.indexOf(String(f.getMimeType()).toLowerCase()) < 0) return { ok: false, error: 'not_excel', message: '엑셀(.xlsx/.xls/.xlsb) 파일만 불러올 수 있습니다' };
   if (f.getSize() > 20 * 1024 * 1024) return { ok: false, error: 'too_large', message: '20MB를 넘는 파일입니다' };
   return { ok: true, name: f.getName(), size: f.getSize(), b64: Utilities.base64Encode(f.getBlob().getBytes()) };
 }

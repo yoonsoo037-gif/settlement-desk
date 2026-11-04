@@ -126,8 +126,33 @@ function saveQuarter_(track, r) {
 // ---------- 드라이브 엑셀 원본 (업로드가 막힌 PC용) ----------
 var XL_MIMES_ = ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/vnd.ms-excel', 'application/vnd.ms-excel.sheet.binary.macroenabled.12'];
 
-// ?section=files&q=검색어 — 최근 수정 순 엑셀 파일 최대 50개. 검색어가 없으면 최근 120일 안의 파일
+// 드라이브 선택은 정산 폴더(기본: 이름이 "3. IP 정산"인 폴더) 안으로만 제한한다. 스크립트 속성 DRIVE_ROOT_ID로 바꿀 수 있다
+var DRIVE_ROOT_NAME_ = '3. IP 정산';
+function driveRoot_() {
+  var id = prop_('DRIVE_ROOT_ID');
+  if (id) { try { return DriveApp.getFolderById(id); } catch (e) { } }
+  var it = DriveApp.getFoldersByName(DRIVE_ROOT_NAME_);
+  if (!it.hasNext()) throw new Error('드라이브에서 "' + DRIVE_ROOT_NAME_ + '" 폴더를 찾지 못했습니다');
+  var f = it.next();
+  PropertiesService.getScriptProperties().setProperty('DRIVE_ROOT_ID', f.getId());
+  return f;
+}
+// 파일·폴더가 정산 폴더 안에 있는지 (부모를 따라 올라가며 확인, 결과는 호출 동안 기억)
+function inRoot_(item, rootId, memo) {
+  var stack = [], ps = item.getParents(), ok = false, guard = 0;
+  while (ps.hasNext() && guard++ < 20) {
+    var p = ps.next(), pid = p.getId();
+    if (pid === rootId) { ok = true; break; }
+    if (memo[pid] !== undefined) { ok = memo[pid]; break; }
+    stack.push(pid); ps = p.getParents();
+  }
+  stack.forEach(function (k) { memo[k] = ok; });
+  return ok;
+}
+
+// ?section=files&q=검색어 — 정산 폴더 안의 엑셀 파일, 최근 수정 순 최대 50개. 검색어가 없으면 최근 120일 안의 파일
 function listFiles_(q) {
+  var root = driveRoot_(), rootId = root.getId(), memo = {};
   var mimeQ = '(' + XL_MIMES_.map(function (m) { return "mimeType = '" + m + "'"; }).join(' or ') + ')';
   var query = mimeQ + ' and trashed = false';
   q = String(q || '').replace(/['\\]/g, '').trim();
@@ -136,20 +161,21 @@ function listFiles_(q) {
   var it = DriveApp.searchFiles(query), list = [];
   while (it.hasNext() && list.length < 300) {
     var f = it.next();
+    if (!inRoot_(f, rootId, memo)) continue;
     list.push({ id: f.getId(), name: f.getName(), size: f.getSize(), modified: f.getLastUpdated().getTime() });
   }
   list.sort(function (a, b) { return b.modified - a.modified; });
   return { ok: true, files: list.slice(0, 50) };
 }
 
-// ?section=folder&id=... — 폴더의 경로(내 드라이브부터)·하위 폴더·엑셀 파일. id가 없으면 내 드라이브
+// ?section=folder&id=... — 폴더의 경로(정산 폴더부터)·하위 폴더·엑셀 파일. id가 없거나 정산 폴더 밖이면 정산 폴더
 function listFolder_(id) {
-  var root = DriveApp.getRootFolder(), rootId = root.getId();
-  var f = id ? DriveApp.getFolderById(String(id)) : root;
+  var root = driveRoot_(), rootId = root.getId(), f = root;
+  if (id && String(id) !== rootId) { var c = DriveApp.getFolderById(String(id)); if (inRoot_(c, rootId, {})) f = c; }
   var path = [], cur = f, guard = 0;
   while (cur && guard++ < 15) {
     var isRoot = cur.getId() === rootId;
-    path.unshift({ id: isRoot ? '' : cur.getId(), name: isRoot ? '내 드라이브' : cur.getName() });
+    path.unshift({ id: isRoot ? '' : cur.getId(), name: cur.getName() });
     if (isRoot) break;
     var ps = cur.getParents(); cur = ps.hasNext() ? ps.next() : null;
   }
@@ -163,12 +189,13 @@ function listFolder_(id) {
     files.push({ id: x.getId(), name: x.getName(), size: x.getSize(), modified: x.getLastUpdated().getTime() });
   }
   files.sort(function (a, b) { return b.modified - a.modified; });
-  return { ok: true, id: id || '', path: path, folders: folders, files: files };
+  return { ok: true, id: f.getId() === rootId ? '' : f.getId(), path: path, folders: folders, files: files };
 }
 
 // ?section=file&id=... — 엑셀 파일 내용을 base64로 (20MB 이하)
 function getFile_(id) {
   var f = DriveApp.getFileById(String(id || ''));
+  if (!inRoot_(f, driveRoot_().getId(), {})) return { ok: false, error: 'outside_root', message: '"' + DRIVE_ROOT_NAME_ + '" 폴더 밖의 파일은 불러올 수 없습니다' };
   if (XL_MIMES_.indexOf(String(f.getMimeType()).toLowerCase()) < 0) return { ok: false, error: 'not_excel', message: '엑셀(.xlsx/.xls/.xlsb) 파일만 불러올 수 있습니다' };
   if (f.getSize() > 20 * 1024 * 1024) return { ok: false, error: 'too_large', message: '20MB를 넘는 파일입니다' };
   return { ok: true, name: f.getName(), size: f.getSize(), b64: Utilities.base64Encode(f.getBlob().getBytes()) };
@@ -181,5 +208,5 @@ function manualAuthTest() {
     Logger.log(TRACKS[t] + ': 매핑 ' + Object.keys(c.map).length + '건, 이력 ' + c.hist.length + '분기, 설정 키: ' + Object.keys(c.cfg).join(','));
   });
   var fl = listFiles_('');
-  Logger.log('드라이브 엑셀(최근 120일): ' + fl.files.length + '개' + (fl.files[0] ? ' · 최근: ' + fl.files[0].name : ''));
+  Logger.log('정산 폴더: ' + driveRoot_().getName() + ' · 엑셀(최근 120일): ' + fl.files.length + '개' + (fl.files[0] ? ' · 최근: ' + fl.files[0].name : ''));
 }

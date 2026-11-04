@@ -278,9 +278,9 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
         <span class="muted small">.xlsx / .xls / .xlsb · 여러 파일 함께 선택 가능(YGP 원본+빅뱅 제외본 등) · 파일 구조를 보고 정산 종류를 자동으로 고릅니다</span>
         <input type="file" id="file" accept=".xlsx,.xls,.xlsb" multiple hidden>
       </label>
-      <div class="drivebar"><button class="btn primary" id="btnDrive" type="button">드라이브에서 선택</button><span class="small muted">회사 PC에서 업로드가 막히면, 드라이브에 넣은 원본을 바로 불러옵니다</span></div>
+      <div class="drivebar"><button class="btn primary" id="btnDrive" type="button">드라이브에서 선택</button><span class="small muted">드라이브 "3. IP 정산" 폴더에서 원본을 바로 불러옵니다 (회사 PC 업로드가 막힐 때)</span></div>
       <div class="drivebox" id="drivePanel" hidden>
-        <div class="row"><input id="driveQ" type="search" placeholder="파일명 검색 (비우면 폴더 보기)" autocomplete="off"><button class="btn sm" id="driveClose" type="button">닫기</button></div>
+        <div class="row"><input id="driveQ" type="search" placeholder="IP 정산 폴더 안에서 파일명 검색 (비우면 폴더 보기)" autocomplete="off"><button class="btn sm" id="driveClose" type="button">닫기</button></div>
         <div class="drivepath" id="drivePath"></div>
         <div id="driveList" class="drivelist" role="list"></div>
         <div class="row drivefoot"><span class="small muted" id="driveSel">파일을 체크해서 고르세요 (여러 개 가능)</span><button class="btn sm primary" id="driveLoad" type="button" disabled>선택한 파일 불러오기</button></div>
@@ -309,16 +309,16 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261104b"></script>
+<script src="config.js?v=20261104c"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261104b"></script>
-<script src="tracks/truz.js?v=20261104b"></script>
-<script src="tracks/thegirls.js?v=20261104b"></script>
-<script src="tracks/line.js?v=20261104b"></script>
-<script src="tracks/ygp.js?v=20261104b"></script>
+<script src="tracks/truz-review.js?v=20261104c"></script>
+<script src="tracks/truz.js?v=20261104c"></script>
+<script src="tracks/thegirls.js?v=20261104c"></script>
+<script src="tracks/line.js?v=20261104c"></script>
+<script src="tracks/ygp.js?v=20261104c"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };

@@ -246,7 +246,7 @@ function mount(ctx) {
     TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pBasic').innerHTML = kv(basic, 'basic');
     var invMonth = p.invoice ? p.invoice.slice(0, 7) : '';
-    var d1 = '1. 로열티 상세 내역 - 정산월 : ' + invMonth + '\n- 프로젝트 : ' + (PUM.proj || '') + '\n- 사업구조 : ' + (PUM.struct || 'RS') + '\n- MG : -\n- 통화 : JPY\n- 환율 : ' + (fxE ? String(fxE) : '(환율 입력)');
+    var d1 = '1. 로열티 상세 내역\n- 정산월 : ' + invMonth + '\n- 프로젝트 : ' + (PUM.proj || '') + '\n- 사업구조 : ' + (PUM.struct || 'RS') + '\n- MG : -\n- 통화 : JPY\n- 환율 : ' + (fxE ? String(fxE) : '(환율 입력)');
     TABLES.royTable = { head: ['판매월', '아티스트', '권역', '판매수량', '총 매출 (vat-)', '로열티 (vat-)'], numCols: [5], sumLast: false,
       rows: R.items.map(function (it) { return [p.ym, it.key, it.side === 'JP' ? '일본' : '글로벌', '-', '-', fmt2(it.raw)]; }) };
     TABLES.paidTable = { head: ['Artist', 'Amount Paid (tax incl.)', '스티커 출시일'], numCols: [1], sumLast: true,

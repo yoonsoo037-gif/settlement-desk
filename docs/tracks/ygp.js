@@ -230,7 +230,9 @@ function mount(ctx) {
       return sec(k, '<div class="allcopy"><button class="btn primary" data-copy="all-' + k + '">본문 전체 복사</button></div>' +
         '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title-' + k + '">복사</button></header><div class="body"><div id="pTitle-' + k + '"></div></div></div>' +
         '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic-' + k + '"></dl></div></div>' +
-        '<div class="block"><header><h3>3. 상세내역</h3><button class="btn sm" data-copy="detail-' + k + '">문구 복사</button></header><div class="body"><pre class="fmt" id="pDetail-' + k + '"></pre>' +
+        '<div class="block fixed"><header><h3>3. 상세내역 — 1. 로열티 상세 내역 <span class="stamp">지정양식</span></h3><button class="btn sm" data-copy="fixed-' + k + '">복사</button></header><div class="body"><pre class="fmt" id="pFixed-' + k + '"></pre>' +
+        '<p class="small muted" style="margin:0">매출 품의 작성 가이드([BIS] 품의 양식) 그대로입니다. 판매월·아티스트·권역 표는 정산서 엑셀에서 복사해 붙입니다.</p></div></div>' +
+        '<div class="block"><header><h3>3. 상세내역 — 2~4</h3><button class="btn sm" data-copy="detail-' + k + '">문구 복사</button></header><div class="body"><pre class="fmt" id="pDetail-' + k + '"></pre>' +
         '<div class="row" style="justify-content:space-between"><b class="small">아티스트별 표 (빅뱅 제외)</b><button class="btn sm" data-copy="art-' + k + '">표 복사</button></div><div class="tablebox"><table id="art-' + k + '"></table></div>' +
         '<pre class="fmt" id="pNote-' + k + '"></pre></div></div>');
     }).join('') + '</div>' +
@@ -267,13 +269,16 @@ function mount(ctx) {
       ['관련문서', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료')], ['결재 라인 (위임전결)', approval(inv.supply)]];
     TXT['basic-' + k] = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pBasic-' + k).innerHTML = kv(basic, 'basic-' + k);
-    var d1 = '1. ' + mNum + '월 ' + (md ? 'MD 로열티 내역' : '가수 MD_응원봉 디자인상표권 사용료') + '\n\n- 총공급가액 : ' + fmt(inv.supply) + '원 - VAT : ' + fmt(inv.vat) + '원 - 총금액 : ' + fmt(inv.total) + '원\n\n2. 아티스트별 ' + (md ? 'MD 로열티 내역' : '응원봉 내역');
+    // 1. 로열티 상세 내역 — 매출 품의 작성 가이드 지정양식. 정산월 = 판매월 다음 달, 프로젝트 = BIS 프로젝트명(YGP MD: "MD")
+    var fixed = '1. 로열티 상세 내역\n- 정산월 : ' + YGP.addMonths(ym, 1) + '\n- 프로젝트 : ' + ((md ? PUM.mdProject : PUM.cbProject) || 'MD') + '\n- 사업구조 : ' + (PUM.struct || 'RS') + '\n- MG : -\n- 통화 : KRW\n- 환율 : 1';
+    TXT['fixed-' + k] = fixed; $('pFixed-' + k).textContent = fixed;
+    var d1 = '2. ' + mNum + '월 ' + (md ? 'MD 로열티 내역' : '가수 MD_응원봉 디자인상표권 사용료') + '\n\n- 총공급가액 : ' + fmt(inv.supply) + '원 - VAT : ' + fmt(inv.vat) + '원 - 총금액 : ' + fmt(inv.total) + '원\n\n3. 아티스트별 ' + (md ? 'MD 로열티 내역' : '응원봉 내역');
     TABLES['art-' + k] = { head: ['아티스트', '수량', '공급가액', '부가세', '공급대가'], numCols: [1, 2, 3, 4], sumLast: true,
       rows: p.artists.map(function (x) { return [x.name, fmt(x.qty), fmt(x.supply), fmt(x.vat), fmt(x.total)]; }).concat([['합계', fmt(R.S.qty), fmt(R.S.supply), fmt(R.S.vat), fmt(R.S.total)]]) };
-    var note = '3. 참고사항 ' + ((md ? PUM.mdNote : PUM.cbNote) || '');
+    var note = '4. 참고사항 ' + ((md ? PUM.mdNote : PUM.cbNote) || '');
     TXT['detail-' + k] = d1 + '\n\n' + tsv(TABLES['art-' + k]) + '\n\n' + note;
     $('pDetail-' + k).textContent = d1; $('art-' + k).innerHTML = tableHtml(TABLES['art-' + k]); $('pNote-' + k).textContent = note;
-    TXT['all-' + k] = title + '\n\n' + TXT['basic-' + k] + '\n\n3. 상세내역\n\n' + TXT['detail-' + k];
+    TXT['all-' + k] = title + '\n\n' + TXT['basic-' + k] + '\n\n3. 상세내역\n\n' + fixed + '\n\n' + TXT['detail-' + k];
 
     // ERP
     var head = [['회계일자', inv.date || '-'], ['증빙구분', '전자세금계산서'], ['청구처', (P.vendorName || '') + ' (' + (P.vendor || '') + ')'], ['통화 / 환율', 'KRW / 1'],

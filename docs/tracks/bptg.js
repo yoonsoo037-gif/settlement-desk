@@ -13,35 +13,73 @@ var BPTG = (function () {
   function addMonths(ym, n) { var y = +ym.slice(0, 4), m = +ym.slice(5, 7) - 1 + n; y += Math.floor(m / 12); m = ((m % 12) + 12) % 12; return y + '-' + pad(m + 1); }
 
   // 테이크원 "BPTG_게임매출_YYYY.MM(또는 nQ)_정산서_YG.xlsx": 월별 "공문_YG_YY.MM" 시트 + "지급정산서" 시트
-  // 분기 공문 = 분기 마지막 달 공문 시트(그 분기 3개월이 한 표에 있음). 테이크원이 이전 달 숫자를 수정해 다시 보내므로 항상 최신 파일 기준
-  function parse(wb) {
+  // 매달 받는 파일의 공문 시트에 분기 표가 누적(7월분: 7월만, 8월분: 7·8월, 9월분: 7·8·9월)되고,
+  // 테이크원이 지난달 숫자를 다음 달 파일에서 고쳐 보낸다(26.2Q 5·6월 → 7월분 파일의 공문_YG_26.06에서 수정). 그래서 여러 파일을 받으면 최신 파일 숫자를 쓴다
+  function parseOne(wb, name) {
     if (!wb.Sheets['지급정산서']) throw new Error('"지급정산서" 시트가 없습니다. 테이크원 BPTG 게임매출 정산서(엑셀)인지 확인해 주세요.');
-    var quarters = [];
+    var best = {}, ver = '';
     wb.SheetNames.forEach(function (s) {
       var m = s.match(/^공문_YG_(\d{2})\.(\d{2}|\dQ)$/); if (!m) return;
-      var y = 2000 + +m[1], q = /Q$/.test(m[2]) ? +m[2][0] : (+m[2] % 3 === 0 ? +m[2] / 3 : 0);
-      if (!q) return;
-      var months = officialRows(wb.Sheets[s]);
+      var y = 2000 + +m[1], isQ = /Q$/.test(m[2]), q = isQ ? +m[2][0] : Math.ceil(+m[2] / 3), rank = isQ ? q * 3 : +m[2];
+      if (!q || q > 4) return;
+      var key = y + '-Q' + q, ym = y + '-' + pad(rank);
+      if (ym > ver) ver = ym;
+      if (best[key] && best[key].rank > rank) return;
+      var rows = officialRows(wb.Sheets[s]);
       var want = [1, 2, 3].map(function (k) { return y + '-' + pad((q - 1) * 3 + k); });
-      if (!want.every(function (ym) { return months.some(function (r) { return r.ym === ym; }); })) return;
-      quarters.push({ key: y + '-Q' + q, y: y, q: q, sheet: s, months: want.map(function (ym) { return months.filter(function (r) { return r.ym === ym; })[0]; }) });
+      if (!want.every(function (x) { return rows.some(function (r) { return r.ym === x; }); })) return;
+      best[key] = { key: key, y: y, q: q, sheet: s, rank: rank, months: want.map(function (x) { return rows.filter(function (r) { return r.ym === x; })[0]; }) };
     });
-    if (!quarters.length) throw new Error('분기 공문 시트(공문_YG_YY.03/06/09/12)를 찾지 못했습니다.');
-    quarters.sort(function (a, b) { return a.key < b.key ? -1 : 1; });
-    return { quarters: quarters, comp: components(wb.Sheets['지급정산서']) };
+    var quarters = Object.keys(best).map(function (k) { return best[k]; });
+    if (!quarters.length) throw new Error('공문 시트(공문_YG_YY.MM)를 찾지 못했습니다.');
+    return { name: name || '', ver: ver, quarters: quarters, comp: components(wb.Sheets['지급정산서']) };
   }
-  // 공문 시트 "3) 정산 세부내역": 매출월 · 순매출액 · 수익배분율 · 정산금액 · 부가가치세 · 합계 (첫 "합계" 행까지)
+  var filled = function (r) { return r && (Math.abs(r.net) >= 0.5 || Math.abs(r.share) >= 0.5); };
+  // 여러 파일 합치기: 파일 순서 = 파일 안 최신 공문 월(같으면 올린 순서). 월별 금액은 그 달 숫자가 있는 가장 최신 파일 기준
+  function merge(list) {
+    list = list.slice().sort(function (a, b) { return a.ver < b.ver ? -1 : a.ver > b.ver ? 1 : 0; });
+    var qs = {}, comp = {};
+    list.forEach(function (f, fi) {
+      Object.keys(f.comp).forEach(function (ym) { var c = f.comp[ym]; if (Object.keys(c).some(function (k) { return Math.abs(c[k]) >= 0.5; })) comp[ym] = c; });
+      f.quarters.forEach(function (q) {
+        var Q = qs[q.key] = qs[q.key] || { key: q.key, y: q.y, q: q.q, months: [null, null, null], src: [null, null, null], seen: [[], [], []] };
+        q.months.forEach(function (r, i) {
+          if (!filled(r)) return;
+          Q.seen[i].push({ file: f.name, sheet: q.sheet, r: r });
+          Q.months[i] = r; Q.src[i] = { file: f.name, ver: f.ver, sheet: q.sheet };
+        });
+        Q.sheet = q.sheet; Q.file = f.name;
+      });
+    });
+    var quarters = Object.keys(qs).sort().map(function (k) {
+      var Q = qs[k];
+      Q.yms = [1, 2, 3].map(function (j) { return Q.y + '-' + pad((Q.q - 1) * 3 + j); });
+      Q.missing = Q.yms.filter(function (ym, i) { return !Q.months[i]; });
+      Q.months = Q.months.map(function (r, i) { return r || { ym: Q.yms[i], net: 0, rate: 0, share: 0, vat: 0, total: 0 }; });
+      Q.revisions = [];
+      Q.seen.forEach(function (arr, i) {
+        for (var j = 1; j < arr.length; j++) {
+          var a = arr[j - 1], b = arr[j];
+          if (Math.abs(a.r.share - b.r.share) >= 0.5 || Math.abs(a.r.net - b.r.net) >= 0.5)
+            Q.revisions.push({ ym: Q.yms[i], from: a, to: b });
+        }
+      });
+      return Q;
+    });
+    return { quarters: quarters, comp: comp, files: list };
+  }
+  function parse(wb, name) { return merge([parseOne(wb, name)]); }
+  // 공문 시트 "3) 정산 세부내역": 매출월 · 순매출액 · 수익배분율 · 정산금액 · 부가가치세 · 합계 (첫 "합계" 행까지, 머리글 열 위치 기준)
   function officialRows(ws) {
-    var rows = rowsOf(ws), out = [], on = false;
+    var rows = rowsOf(ws), out = [], col = null;
     for (var i = 0; i < rows.length; i++) {
-      var r = rows[i].map(N), j = r.indexOf('매출월');
-      if (j >= 0) { on = true; continue; }
-      if (!on) continue;
-      if (r.indexOf('합계') >= 0 || r.some(function (c) { return /^합계/.test(c); })) break;
+      var r = rows[i].map(N);
+      if (r.indexOf('매출월') >= 0) { col = { net: r.indexOf('순매출액'), rate: r.indexOf('수익배분율'), share: r.indexOf('정산금액'), vat: r.indexOf('부가가치세'), total: r.indexOf('합계') }; continue; }
+      if (!col) continue;
       var mi = -1; r.forEach(function (c, k) { if (mi < 0 && /^\d{4}년 \d{1,2}월$/.test(c)) mi = k; });
-      if (mi < 0) continue;
-      var mm = r[mi].match(/(\d{4})년 (\d{1,2})월/), v = rows[i].slice(mi + 1).map(num).filter(function (x) { return x != null; });
-      out.push({ ym: mm[1] + '-' + pad(+mm[2]), net: v[0] || 0, rate: v[1] || 0, share: v[2] || 0, vat: v[3] || 0, total: v[4] || 0 });
+      if (mi < 0) { if (r.some(function (c) { return /^합계/.test(c); })) break; continue; }
+      var mm = r[mi].match(/(\d{4})년 (\d{1,2})월/), g = function (k) { return col[k] >= 0 ? (num(rows[i][col[k]]) || 0) : 0; };
+      out.push({ ym: mm[1] + '-' + pad(+mm[2]), net: g('net'), rate: g('rate'), share: g('share'), vat: g('vat'), total: g('total') });
     }
     return out;
   }
@@ -70,7 +108,12 @@ var BPTG = (function () {
     var sum = function (k) { return qt.months.reduce(function (a, r) { return a + r[k]; }, 0); };
     var supply = Math.round(sum('share')), vat = Math.round(sum('vat')), net = Math.round(sum('net'));
     var vat10 = Math.floor(supply * 0.1);
+    if (qt.missing && qt.missing.length) flags.push({ level: 'bad', text: qt.missing.map(function (ym) { return +ym.slice(5) + '월'; }).join('·') + ' 금액이 없습니다 — 해당 월 정산서(또는 그 이후 정산서)를 함께 올려 주세요. 분기 확정 불가' });
+    (qt.revisions || []).forEach(function (v) {
+      flags.push({ level: 'warn', text: v.ym + ' 금액이 파일마다 다릅니다: ' + v.from.file + ' 정산금액 ' + fmt(v.from.r.share) + '원 → ' + v.to.file + ' ' + fmt(v.to.r.share) + '원 (순매출 ' + fmt(v.from.r.net) + ' → ' + fmt(v.to.r.net) + '). 최신 파일 기준 적용' });
+    });
     qt.months.forEach(function (r) {
+      if (!filled(r)) return;
       var exp = Math.round(r.net * rate);
       if (Math.abs(exp - r.share) >= 1) flags.push({ level: 'warn', text: r.ym + ' 정산금액 ' + fmt(r.share) + '원이 순매출 × ' + Math.round(rate * 100) + '% (' + fmt(exp) + '원)와 다릅니다 — 공문 금액 그대로 사용' });
       var c = comp[r.ym];
@@ -78,14 +121,14 @@ var BPTG = (function () {
     });
     if (!flags.some(function (f) { return f.level === 'bad'; })) flags.push({ level: 'ok', text: '공문(' + qt.sheet + ') 월별 순매출액 = 지급정산서 수익분배 기준금액, 정산금액 = 순매출 × ' + Math.round(rate * 100) + '% 확인' });
     flags.push({ level: 'ok', text: '분기 공급가액 ' + fmt(supply) + '원 (월별 정산금액 합) · 부가세 ' + fmt(vat) + '원 (공문 월별 부가세 합) · 합계 ' + fmt(supply + vat) + '원' });
-    if (vat !== vat10) flags.push({ level: 'warn', text: '공문 부가세 ' + fmt(vat) + '원 ≠ 공급가액 × 10% ' + fmt(vat10) + '원 (' + (vat - vat10) + '원) — 월별로 부가세를 끊어 계산해 생기는 차이. 세금계산서·ERP 부가세는 공문 기준 ' + fmt(vat) + '원으로 두었습니다. 회계팀 기준과 다르면 수정하세요' });
+    if (vat !== vat10) flags.push({ level: 'ok', text: '부가세는 공문 기준 ' + fmt(vat) + '원 적용 (공급가액 × 10% = ' + fmt(vat10) + '원과 ' + (vat - vat10) + '원 차이 — 공문이 월별로 부가세를 끊어 계산)' });
     var y2 = String(qt.y).slice(2), qEnd = qt.y + '-' + pad(qt.q * 3);
     var tx = addMonths(qEnd, 2) + '-01';                          // 세금계산서 발행일: 분기 마지막 달 + 2개월 1일 (2Q → 8/1, 3Q → 11/1)
     var pay = monthEnd(addMonths(tx.slice(0, 7), 1));             // 입금예정일: 거래일자 다음 달 말일 (26.2Q 품의 9/30)
     return { supply: supply, vat: vat, total: supply + vat, net: net, vat10: vat10, tx: tx, pay: pay, y2: y2, flags: flags,
       start: qt.months[0].ym + '-01', end: monthEnd(qt.months[2].ym) };
   }
-  return { parse: parse, compute: compute, fmt: fmt, addMonths: addMonths, monthEnd: monthEnd, pad: pad };
+  return { parse: parse, parseOne: parseOne, merge: merge, compute: compute, fmt: fmt, addMonths: addMonths, monthEnd: monthEnd, pad: pad };
 })();
 if (typeof module !== 'undefined') module.exports = BPTG;
 if (typeof DESK === 'undefined') return;
@@ -124,17 +167,19 @@ var ymKo = function (ym) { return ym.slice(0, 4) + '년 ' + (+ym.slice(5)) + '�
 function mount(ctx) {
   var $ = function (id) { return document.getElementById(id); };
   var CFG = (ctx.data && ctx.data.cfg) || {}, B = CFG.BPTG || {}, H = CFG.BPTG_HIST || { rows: [] };
-  var P = BPTG.parse(ctx.wb), S = { key: P.quarters[P.quarters.length - 1].key }, TXT = {}, TABLES = {};
+  var FILES = ctx.files && ctx.files.length ? ctx.files : [{ name: ctx.fileName, wb: ctx.wb }];
+  var P = BPTG.merge(FILES.map(function (f) { return BPTG.parseOne(f.wb, f.name); })), S = { key: (function () { var cnt = {}, best = null; P.files.forEach(function (f) { var y = f.ver.slice(0, 4), k = y + '-Q' + Math.ceil(+f.ver.slice(5) / 3); cnt[k] = (cnt[k] || 0) + 1; }); Object.keys(cnt).forEach(function (k) { if (P.quarters.some(function (q) { return q.key === k; }) && (!best || cnt[k] > cnt[best] || (cnt[k] === cnt[best] && k > best))) best = k; }); return best || P.quarters[P.quarters.length - 1].key; })() }, TXT = {}, TABLES = {};
 
   ctx.tabsEl.innerHTML = tabsHtml([['calc', '정산'], ['pum', '품의 복붙'], ['erp', 'ERP 전표']]);
   ctx.root.innerHTML =
-    '<div class="tabpanel" id="p-calc"><section class="panel"><div class="form"><label>정산 분기<select id="inQ">' + P.quarters.map(function (q) { return '<option value="' + q.key + '">' + q.y + '년 ' + q.q + '분기 (' + esc(q.sheet) + ')</option>'; }).join('') + '</select></label></div>' +
-    '<p class="small muted" style="margin:0">테이크원이 지난달 숫자를 고쳐서 다시 보내므로 <b>가장 최근에 받은 정산서 엑셀</b>을 올려 주세요(26.2Q는 품의 도중 광고매출이 수정돼 2,830,720 → 2,830,788원으로 바뀜).</p></section>' +
+    '<div class="tabpanel" id="p-calc"><section class="panel"><div class="form"><label>정산 분기<select id="inQ">' + P.quarters.map(function (q) { return '<option value="' + q.key + '">' + q.y + '년 ' + q.q + '분기' + (q.missing.length ? ' (' + q.missing.map(function (ym) { return +ym.slice(5) + '월'; }).join('·') + ' 없음)' : '') + '</option>'; }).join('') + '</select></label></div>' +
+    '<p class="small muted" style="margin:0">테이크원이 지난달 숫자를 고쳐서 다시 보내므로 분기 3개월 정산서(예: 7·8·9월분)를 <b>한꺼번에</b> 올려 주세요. 같은 달 숫자가 파일마다 다르면 <b>가장 최근 파일</b> 기준으로 계산하고 수정 내역을 표시합니다(26.2Q는 7월분 파일에서 5·6월이 수정돼 2,830,720 → 2,830,788원).</p><div class="small muted" id="fileList" style="margin-top:6px"></div></section>' +
     '<section class="panel dash"><div class="tiles" id="tiles"></div><div class="status" id="statusLine"></div><div class="meta" id="amtMeta"></div><details class="fold vfold" open><summary>정산서 숫자 검증</summary><div class="flags" id="flags"></div></details></section>' +
     '<section class="panel"><div class="ph"><h2>월별 수익배분</h2><p>지급정산서 하단 구성표와 분기 공문 시트 기준입니다.</p></div><div class="tablebox"><table id="monTable"></table></div></section>' +
     '<details class="panel fold logic"><summary><b>적용 중인 정산 로직</b> <span class="small muted">26.2Q 매출품의 26-0620 · ERP AR26081800006 · 인수인계 녹음 기준</span></summary><ol>' +
     '<li><b>수익분배 기준금액</b>: 게임 순매출 + MD_1 매출총이익(MD + OST MERCH) + IAA 매출총이익 + MD_2 + 음원 + YouTube.</li>' +
     '<li><b>YG 정산금액</b>: 월별 기준금액 × 23%. 분기 공급가액 = 3개월 합(원 단위), 부가세 = 공문 월별 부가세 합.</li>' +
+    '<li><b>여러 파일</b>: 월별 정산서 공문에 분기 표가 누적되므로, 각 월 금액은 그 달 숫자가 있는 가장 최근 파일(파일 안 최신 공문 월 기준)에서 가져옵니다. 파일 간 숫자가 다르면 수정 내역으로 표시합니다.</li>' +
     '<li><b>MG</b>: 20억 원은 2024년 10월에 모두 차감 완료 — 이후 정산금액 = 실입금.</li>' +
     '<li><b>날짜</b>: 거래일자(세금계산서 발행일) = 분기 마지막 달 + 2개월 1일, 입금예정일 = 그 다음 달 말일.</li></ol></details></div>' +
 
@@ -165,9 +210,10 @@ function mount(ctx) {
     $('amtMeta').textContent = '거래일자(세금계산서) ' + R.tx + ' · 입금예정일 ' + R.pay + ' · ' + ctx.fileName;
     $('flags').innerHTML = flagsHtml(flags);
     var keys = ['게임 순매출액', 'MD_1 매출총이익', 'IAA 매출총이익', 'MD_2 매출총이익', '음원 매출', 'YouTube 매출'];
-    TABLES.mon = { head: ['매출월'].concat(keys, ['수익분배 기준금액', 'YG 정산금액', '부가세']), numCols: [1, 2, 3, 4, 5, 6, 7, 8, 9], sumLast: true,
-      rows: Q.months.map(function (r) { var c = P.comp[r.ym] || {}; return [r.ym].concat(keys.map(function (k) { return fmt(c[k] || 0); }), [fmt(r.net), fmt(r.share), fmt(r.vat)]); })
-        .concat([['합계'].concat(keys.map(function (k) { return fmt(Q.months.reduce(function (a, r) { return a + ((P.comp[r.ym] || {})[k] || 0); }, 0)); }), [fmt(R.net), fmt(R.supply), fmt(R.vat)])]) };
+    TABLES.mon = { head: ['매출월'].concat(keys, ['수익분배 기준금액', 'YG 정산금액', '부가세', '출처']), numCols: [1, 2, 3, 4, 5, 6, 7, 8, 9], sumLast: true,
+      rows: Q.months.map(function (r, i) { var c = P.comp[r.ym] || {}, sc = Q.src[i]; return [r.ym].concat(keys.map(function (k) { return fmt(c[k] || 0); }), [fmt(r.net), fmt(r.share), fmt(r.vat), sc ? sc.ver.slice(2, 4) + '.' + sc.ver.slice(5) + '월분 파일 · ' + sc.sheet : '없음']); })
+        .concat([['합계'].concat(keys.map(function (k) { return fmt(Q.months.reduce(function (a, r) { return a + ((P.comp[r.ym] || {})[k] || 0); }, 0)); }), [fmt(R.net), fmt(R.supply), fmt(R.vat), ''])]) };
+    $('fileList').textContent = '올린 파일 ' + P.files.length + '개: ' + P.files.map(function (f) { return f.name; }).join(', ');
     $('monTable').innerHTML = tableHtml(TABLES.mon);
 
     // ---- 품의 ----
@@ -271,12 +317,12 @@ function mount(ctx) {
   ctx.tabsEl.querySelectorAll('.tab').forEach(function (b) { b.addEventListener('click', function () { showTab(b.getAttribute('data-tab')); window.scrollTo(0, 0); }); });
   var st = null; try { st = localStorage.getItem('bptg.tab'); } catch (e) { }
   render(); showTab(st || 'calc');
-  return { quarter: Q.y + '.' + Q.q + 'Q', note: Q.sheet + ' · 분기 ' + P.quarters.length + '개 인식' };
+  return { quarter: Q.y + '.' + Q.q + 'Q', note: '파일 ' + P.files.length + '개 · 분기 ' + P.quarters.length + '개 인식' };
 }
 
-DESK.register({ id: 'bptg-game', server: 'thegirls', name: '블랙핑크더게임 · 게임매출', desc: 'BPTG 게임 매출 로열티 23% · 분기 매출 (테이크원)',
-  fileHint: 'BPTG_게임매출_YYYY.MM(또는 nQ)_정산서_YG.xlsx — 가장 최근에 받은 파일', outputs: ['정산서 숫자 검증', '매출품의', 'ERP 매출 전표 입력값'],
-  detect: function (wb) { try { BPTG.parse(wb); return true; } catch (e) { return false; } },
-  why: function (wb) { if (!wb.Sheets['지급정산서']) return ''; try { BPTG.parse(wb); return ''; } catch (e) { return e.message; } },
+DESK.register({ id: 'bptg-game', server: 'thegirls', multi: true, name: '블랙핑크더게임 · 게임매출', desc: 'BPTG 게임 매출 로열티 23% · 분기 매출 (테이크원)',
+  fileHint: 'BPTG_게임매출_YYYY.MM_정산서_YG.xlsx — 분기 3개월분(예: 07·08·09)을 한꺼번에', outputs: ['정산서 숫자 검증', '매출품의', 'ERP 매출 전표 입력값'],
+  detect: function (wb) { try { BPTG.parseOne(wb); return true; } catch (e) { return false; } },
+  why: function (wb) { if (!wb.Sheets['지급정산서']) return ''; try { BPTG.parseOne(wb); return ''; } catch (e) { return e.message; } },
   mount: mount });
 })();

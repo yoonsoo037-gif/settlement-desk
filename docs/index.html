@@ -254,6 +254,22 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
   .drop { padding: 24px 16px; }
 }
 @media (prefers-reduced-motion: no-preference) { .btn, .drop, .tab, .tile { transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; } }
+/* 정산 캘린더 */
+.cal-nav { align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-title { font-size: 17px; min-width: 110px; text-align: center; }
+.cal-legend { margin-left: auto; display: flex; gap: 6px; flex-wrap: wrap; }
+.cal-tag { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.cal-h { font-size: 12px; font-weight: 700; text-align: center; color: var(--ink-2); padding: 4px 0; }
+.cal-cell { min-height: 96px; border: 1px solid var(--line-2); border-radius: 10px; padding: 5px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.cal-cell.out { opacity: .35; }
+.cal-cell.today { border: 2px solid var(--accent); }
+.cal-d { font-size: 12px; font-weight: 700; }
+.sun .cal-d, .cal-h.sun { color: var(--bad); } .sat .cal-d, .cal-h.sat { color: var(--sky-2); }
+.cal-ev { font-size: 11px; font-weight: 600; line-height: 1.3; padding: 2px 5px; border-radius: 6px; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.cal-list td { white-space: normal; vertical-align: top; } .cal-list td.n, .cal-list td:first-child { white-space: nowrap; }
+.cal-list tr.past td { opacity: .45; }
+@media (max-width: 640px) { .cal-cell { min-height: 54px; padding: 3px; } .cal-ev { font-size: 0; padding: 0; height: 6px; border-radius: 3px; background: currentColor !important; } }
 </style>
 </head>
 <body class="locked">
@@ -290,6 +306,7 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
       <div class="pick" id="pick" hidden><span class="small">정산 종류를 직접 선택:</span><select id="pickSel"></select><button class="btn sm primary" id="pickBtn" type="button">이 정산으로 읽기</button></div>
       <div class="tracks" id="trackList"></div>
     </section>
+    <section class="panel" id="calendar" hidden></section>
     <div id="workspace"></div>
     <div id="copyFallback" class="fallback panel" hidden><b class="small">자동 복사가 막혀 있습니다. 아래 내용을 선택해서 복사해 주세요.</b><textarea id="fbText" readonly></textarea></div>
   </main>
@@ -309,17 +326,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261111d"></script>
+<script src="config.js?v=20261111e"></script>
+<script src="calendar.js?v=20261111e"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261111d"></script>
-<script src="tracks/truz.js?v=20261111d"></script>
-<script src="tracks/thegirls.js?v=20261111d"></script>
-<script src="tracks/line.js?v=20261111d"></script>
-<script src="tracks/ygp.js?v=20261111d"></script>
-<script src="tracks/bptg.js?v=20261111d"></script>
+<script src="tracks/truz-review.js?v=20261111e"></script>
+<script src="tracks/truz.js?v=20261111e"></script>
+<script src="tracks/thegirls.js?v=20261111e"></script>
+<script src="tracks/line.js?v=20261111e"></script>
+<script src="tracks/ygp.js?v=20261111e"></script>
+<script src="tracks/bptg.js?v=20261111e"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -365,12 +383,23 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     }).join('');
     $('pickSel').innerHTML = DESK.tracks.map(function (t) { return '<option value="' + t.id + '">' + esc(t.name) + '</option>'; }).join('');
   }
+  // 첫 화면 탭: 정산 계산기 / 정산 캘린더
+  function homeTab(t) {
+    try { localStorage.setItem('desk.home', t); } catch (e) { }
+    $('tabsSlot').innerHTML = '<div class="tabs-in" role="tablist" aria-label="첫 화면"><button class="tab" role="tab" data-home="calc" aria-selected="' + (t !== 'cal') + '"><span>1</span>정산 계산기</button><button class="tab" role="tab" data-home="cal" aria-selected="' + (t === 'cal') + '"><span>2</span>정산 캘린더</button></div>';
+    $('tabsSlot').querySelectorAll('[data-home]').forEach(function (b) { b.addEventListener('click', function () { homeTab(b.getAttribute('data-home')); }); });
+    $('home').hidden = t === 'cal'; $('calendar').hidden = t !== 'cal';
+    $('trackDesc').textContent = t === 'cal' ? '정산 캘린더' : '정산 계산기';
+    if (t === 'cal' && window.DESK_CAL) DESK_CAL.render($('calendar'));
+  }
   function goHome() {
     current = null;
     $('workspace').innerHTML = ''; $('tabsSlot').innerHTML = ''; $('home').hidden = false;
     $('trackSep').hidden = true; $('trackName').textContent = ''; $('trackDesc').textContent = '정산 계산기';
     $('chipQ').hidden = true; $('chipMode').hidden = true; $('btnNew').hidden = true; $('copyFallback').hidden = true;
     document.title = '정산 데스크';
+    var ht = 'calc'; try { ht = localStorage.getItem('desk.home') || 'calc'; } catch (e) { }
+    homeTab(ht);
   }
 
   // ---------- 파일 → 판별 → 해당 정산 설정 로드 → 모듈 실행 ----------
@@ -511,7 +540,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
       var info = track.mount({ root: root, tabsEl: $('tabsSlot'), wb: pending.wb, bytes: pending.bytes, fileName: pending.name, files: pending.files, data: data,
         post: poster(track.server || track.id), get: function (q) { return get(Object.assign({ track: track.server || track.id }, q)); }, saveFile: saveFile, toast: toast });
       current = track;
-      $('home').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true; $('fileInfo').hidden = true;
+      $('home').hidden = true; $('calendar').hidden = true; $('loadMsg').textContent = ''; $('pick').hidden = true; $('fileInfo').hidden = true;
       $('trackSep').hidden = false; $('trackName').textContent = track.name; $('trackDesc').textContent = track.desc;
       $('chipQ').hidden = false; $('chipMode').hidden = false; $('chipMode').title = (info && info.note) || '';
       if (info && info.quarter) $('chipQ').textContent = info.quarter;

@@ -156,11 +156,13 @@ function statusHtml(fl) {
   var nb = fl.filter(function (f) { return f.level === 'bad'; }).length, nw = fl.filter(function (f) { return f.level === 'warn'; }).length, lvl = nb ? 'bad' : nw ? 'warn' : 'ok';
   return { cls: 'status ' + lvl, html: '<b>' + (nb ? '조치 필요 ' + nb + '건' : nw ? '체크 ' + nw + '건' : '검증 이상 없음') + '</b><span>' + esc((fl.filter(function (f) { return f.level === lvl; })[0] || {}).text || '') + '</span>' };
 }
+// 위임전결기준표(261006) 1.1.2 매출 품의 · 사업 부문. 광고IP사업팀은 팀 리더·그룹 리더 결재를 그룹리더 1명이 받음(26.10 YGP 품의 26-0852·0853 실제)
 function approval(supply) {
-  if (supply < 5e6) return '500만원 미만 (합의종결): 기안 → 팀 리더(최종) · 합의: 재무관리팀 담당, 회계팀 담당';
-  if (supply < 5e7) return '500만원 이상 5,000만원 미만 (합의종결): 기안 → 팀 리더 → 그룹 리더(최종) · 합의: 재무관리팀 담당, 회계팀 담당 → 회계팀 리더';
-  if (supply < 3e8) return '5,000만원 이상 3억원 미만: 기안 → 팀 리더 → 그룹 리더 · 합의: 재무관리팀·회계팀 담당 → 회계팀 리더 → CFO → 부문 대표(최종)';
-  return '3억원 이상: 기안 → 팀 리더 → 그룹 리더 · 합의: 재무관리팀·회계팀 담당 → 회계팀 리더 → CFO → 부문 대표 → 대표이사(최종)';
+  var NOTE = ' — 광고IP사업팀은 팀 리더·그룹 리더 결재를 그룹리더가 한 번에 받음';
+  if (supply < 5e6) return '500만원 미만 (합의종결): 결재 팀 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당' + NOTE;
+  if (supply < 5e7) return '500만원 이상 5,000만원 미만 (합의종결): 결재 팀 리더 → 그룹 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더)' + NOTE;
+  if (supply < 3e8) return '5,000만원 이상 3억원 미만: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 결재 부문 대표(최종)' + NOTE;
+  return '3억원 이상: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 부문 대표 → 대표이사(최종)' + NOTE;
 }
 var ymKo = function (ym) { return ym.slice(0, 4) + '년 ' + (+ym.slice(5)) + '월'; };
 

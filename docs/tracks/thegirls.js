@@ -5,6 +5,15 @@
  * 서버 트랙은 둘 다 'thegirls' 하나를 쓴다: _매핑 탭 = 누적 원장(행 키 → 행 JSON), _이력/_확정 = 회차 기록.
  * 회사 데이터(코드·거래처·계좌·연락처·검증 기준)는 이 파일에 없고 로그인 후 서버 설정에서 받는다. */
 (function () {
+  // 위임전결기준표(261006) 1.1.3 매입 품의 · 사업 부문 (금액 = VAT 제외·원천징수 전)
+  function approvalBuy(amt) {
+    var NOTE = ' — 광고IP사업팀은 팀 리더·그룹 리더 결재를 그룹리더가 한 번에 받음';
+    if (amt < 1e6) return '100만원 미만 (합의종결): 결재 팀 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당' + NOTE;
+    if (amt < 2e7) return '100만원 이상 2,000만원 미만 (합의종결): 결재 팀 리더 → 그룹 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더)' + NOTE;
+    if (amt < 2e8) return '2,000만원 이상 2억원 미만: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 결재 부문 대표(최종)' + NOTE;
+    return '2억원 이상: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 부문 대표 → 대표이사(최종)' + NOTE;
+  }
+  function erpBuyLine(amt) { return amt < 1e8 ? '재무관리팀 담당 합의 → 팀 리더 결재 → 회계 담당 검토·승인 (1억원 미만, 위임전결 2.2)' : '재무관리팀 담당·리더 합의 → 팀 리더 결재 → 회계 담당 → 회계 리더 승인 (1억원 이상, 위임전결 2.2)'; }
   var TG = (function () {
     var N = function (s) { return String(s == null ? '' : s).replace(/[\s\\]+/g, ''); };
     var pad = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -348,7 +357,7 @@
       TXT.title = "[매입품의] " + label + " 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '거주자'], ['외국환 신고 필요여부', '1.경상거래 해당없음 / 2.자본거래 해당없음'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'],
-        ['계약기간', T.contract || ''], ['총금액 (VAT제외)', fmt(R.supply)], ['기간', R.from + ' ~ ' + R.to], ['통화 종류', 'KRW']];
+        ['계약기간', T.contract || ''], ['총금액 (VAT제외)', fmt(R.supply)], ['기간', R.from + ' ~ ' + R.to], ['통화 종류', 'KRW'], ['결재 라인 (위임전결)', approvalBuy(R.supply)], ['ERP 결재선', erpBuyLine(R.supply)]];
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var re = Math.round(R.gross * (T.reshareRate || 0.23));
       TXT.detail = '1. 내용 : 블랙핑크더게임 OST "THE GIRLS" ' + R.rangeText.replace(' ~ ', '~') + ' 음원 로열티 정산(' + (T.detailName || T.name || '') + ')\n\n2. 기간 : ' + R.rangeText + '\n' +
@@ -543,6 +552,8 @@
       TXT.title = "[매입품의] 블랙핑크더게임 OST 'THE GIRLS' " + hf.kor + " 음원 로열티 수익 작가 배분 건";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '비거주자'], ['외국환 신고 필요여부', '직전 품의 선택값과 동일'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'], ['전체계약금액 (VAT제외)', fx ? fmt2(R.totalU) : '-'], ['계약기간', WC.contract || ''], ['통화 종류', 'USD']];
+      var buyKrw = R.writers.reduce(function (t, w) { return t + (w.totalK || 0); }, 0);
+      basic.push(['결재 라인 (위임전결, 원화 ' + fmt(buyKrw) + '원 기준)', approvalBuy(buyKrw)], ['ERP 결재선', erpBuyLine(buyKrw)]);
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var order = R.writers.slice().sort(function (a, b) { return b.rate - a.rate; });
       var names = order.map(function (w) { return w.detailName || w.name; }).join(', ');

@@ -51,7 +51,25 @@ var YGP = (function () {
       for (var k = p.actorAt + 1; k < rows.length; k++) if (cell(k, 0) === '합계' || cell(k, 1) === '합계') { p.actorTotal = num(rows[k][3]) || 0; break; }
     }
     if (!p.artists.length) throw new Error('"② 아티스트별" 표에 아티스트 행이 없습니다.');
+    p.gross = grossOf(wb);
     return p;
+  }
+  // 품의 판매월 표 "총 매출 (vat-)": "제품매출" 시트 상세 행 중 정산대상(YGK(정산대상)) 매출 "금액"을 아티스트별 합산.
+  // 아티스트 키 = "추가구분"(예: BABYMONSTER(라미포함)·WINNER(위너)(민호제외))이 있으면 그것, 없으면 "품목군" — ② 아티스트별 표기와 같음 (26.10 품의 34행 일치)
+  function grossOf(wb) {
+    var ws = wb.Sheets['제품매출']; if (!ws) return null;
+    var rows = rowsOf(ws), out = {}, h = -1, c;
+    for (var i = 0; i < Math.min(rows.length, 300); i++) {
+      var r = (rows[i] || []).map(N);
+      if (r.indexOf('매출일자') >= 0 && r.indexOf('정산대상여부') >= 0 && r.indexOf('금액') >= 0 && r.indexOf('품목군') >= 0) { h = i; c = { t: r.indexOf('정산대상여부'), g: r.indexOf('품목군'), x: r.indexOf('추가구분'), a: r.indexOf('금액') }; break; }
+    }
+    if (h < 0) return null;
+    for (var j = h + 1; j < rows.length; j++) {
+      var x = rows[j] || []; if (N(x[c.t]) !== 'YGK(정산대상)') continue;
+      var key = (c.x >= 0 && N(x[c.x])) || N(x[c.g]); if (!key) continue;
+      out[K(key)] = (out[K(key)] || 0) + (num(x[c.a]) || 0);
+    }
+    return out;
   }
 
   // 2) 계산·검증. MD: 매핑표 순서·코드 / 응원봉: 원본 순서, 프로젝트·그룹 공통("_")
@@ -135,7 +153,7 @@ var YGP = (function () {
     return { diffs: out, rows: d.artists.length };
   }
 
-  return { parse: parse, compute: compute, memo: memo, buildErpUpload: buildErpUpload, bigOf: bigOf, exclude: exclude, compare: compare, fmt: fmt, monthEnd: monthEnd, addMonths: addMonths };
+  return { parse: parse, K: K, compute: compute, memo: memo, buildErpUpload: buildErpUpload, bigOf: bigOf, exclude: exclude, compare: compare, fmt: fmt, monthEnd: monthEnd, addMonths: addMonths };
 })();
 if (typeof module !== 'undefined') module.exports = YGP;
 if (typeof DESK === 'undefined') return;
@@ -169,10 +187,11 @@ function statusHtml(fl) {
 }
 var tsv = function (t) { return [t.head].concat(t.rows).map(function (r) { return r.join('\t'); }).join('\n'); };
 // 위임전결기준표(261006) — 사업부문 매출 품의
+// 실제 결재선: 26.10 MD 품의 26-0852(1.26억) · 응원봉 품의 26-0853(491만) 기준
 function approval(supply) {
-  if (supply < 5e6) return '500만원 미만 (합의종결): 기안 → 팀 리더(최종) · 합의: 재무관리팀 담당, 회계팀 담당';
-  if (supply < 5e7) return '500만원 이상 5,000만원 미만 (합의종결): 기안 → 팀 리더 → 그룹 리더(최종) · 합의: 재무관리팀 담당, 회계팀 담당 → 회계팀 리더';
-  if (supply < 3e8) return '5,000만원 이상 3억원 미만: 기안 → 팀 리더 → 그룹 리더 · 합의: 재무관리팀·회계팀 담당 → 회계팀 리더 → CFO → 부문 대표(최종)';
+  if (supply < 5e6) return '결재: 그룹리더 · 합의: 재무관리팀 담당 → 회계팀 담당 → 재무관리그룹 리더 (26.10 응원봉 품의 기준)';
+  if (supply < 5e7) return '결재: 그룹리더 · 합의: 재무관리팀 담당 → 회계팀 담당 → 재무관리그룹 리더 (500만~5,000만원 구간 — 규정상 회계팀 리더 합의 추가 여부 확인)';
+  if (supply < 3e8) return '결재: 그룹리더 → 합의: 재무관리팀 담당 → 회계팀 담당 → 재무관리그룹 리더 → 경영지원부문 대표 → 결재: 부문대표 (26.10 MD 품의 기준)';
   return '3억원 이상: 기안 → 팀 리더 → 그룹 리더 · 합의: 재무관리팀·회계팀 담당 → 회계팀 리더 → CFO → 부문 대표 → 대표이사(최종)';
 }
 
@@ -231,10 +250,8 @@ function mount(ctx) {
         '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title-' + k + '">복사</button></header><div class="body"><div id="pTitle-' + k + '"></div></div></div>' +
         '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic-' + k + '"></dl></div></div>' +
         '<div class="block fixed"><header><h3>3. 상세내역 — 1. 로열티 상세 내역 <span class="stamp">지정양식</span></h3><button class="btn sm" data-copy="fixed-' + k + '">복사</button></header><div class="body"><pre class="fmt" id="pFixed-' + k + '"></pre>' +
-        '<p class="small muted" style="margin:0">매출 품의 작성 가이드([BIS] 품의 양식) 그대로입니다. 판매월·아티스트·권역 표는 정산서 엑셀에서 복사해 붙입니다.</p></div></div>' +
-        '<div class="block"><header><h3>3. 상세내역 — 2~4</h3><button class="btn sm" data-copy="detail-' + k + '">문구 복사</button></header><div class="body"><pre class="fmt" id="pDetail-' + k + '"></pre>' +
-        '<div class="row" style="justify-content:space-between"><b class="small">아티스트별 표 (빅뱅 제외)</b><button class="btn sm" data-copy="art-' + k + '">표 복사</button></div><div class="tablebox"><table id="art-' + k + '"></table></div>' +
-        '<pre class="fmt" id="pNote-' + k + '"></pre></div></div>');
+        '<div class="row" style="justify-content:space-between"><b class="small">판매월 표 (빅뱅 제외 · 로열티 = 공급가액)</b><button class="btn sm" data-copy="art-' + k + '">표 복사</button></div><div class="tablebox"><table id="art-' + k + '"></table></div></div></div>' +
+        '<div class="block"><header><h3>3. 상세내역 — 2. 참고사항</h3><button class="btn sm" data-copy="note-' + k + '">복사</button></header><div class="body"><pre class="fmt" id="pNote-' + k + '"></pre></div></div>');
     }).join('') + '</div>' +
     '<div class="tabpanel" id="p-erp" hidden>' + kinds.map(function (k) {
       return sec(k, '<p class="small muted" style="margin:0">품의 승인 후 회계 → 매출 추가 → 기안문서 연동 → 세금계산서 등록(부가세만 생성) → 거래내역 엑셀 업로드에 아래 파일을 올리고 처리 → 결재. 업로드 후 날짜 칸이 에러 나는지 한 번 확인합니다.</p>' +
@@ -260,30 +277,36 @@ function mount(ctx) {
 
     // 품의
     TXT['title-' + k] = title; $('pTitle-' + k).textContent = title;
-    var attach = [g.orig ? g.orig.file : '', g.excl ? g.excl.file : ''].filter(Boolean).join(', ');
     var basic = [['비거주자 여부', '거주자'], ['외국환 신고 필요여부', '1.경상거래 해당없음 / 2.자본거래 해당없음'], ['거래처명', (P.vendorName || '') + ' (' + (P.vendor || '') + ')'], ['거래일자', inv.date || '-'],
       ['금액', fmt(inv.supply)], ['VAT', fmt(inv.vat)], ['총금액', fmt(inv.total)], ['프로젝트', '프로젝트공통 (_)'], ['입금예정일 (이내)', pay || '-'],
       ['아티스트(그룹)', '그룹공통 (_)'], ['아티스트(개인)', (P.artistName || '아티스트공통') + ' (' + (P.artist || '') + ')'], ['매출 종류', '로열티'], ['계약서 작성 여부', '작성'], ['통화종류', 'KRW'],
-      ['청구방법', '정산서 수령 후 일시'], ['발행정보', '세금계산서'], ['사업자등록번호', P.bizNo || ''], ['담당자 / 이메일', (P.contact || '') + ' / ' + (P.email || '')],
-      ['첨부파일 (원본·빅뱅 제외본)', attach + (g.orig && g.excl ? '' : ' — ' + (g.orig ? '빅뱅 제외본' : '원본(빅뱅 포함)') + ' 미첨부')],
+      ['청구방법', '정산서 수령 후'], ['에이전시 유/무', '없음'], ['발행정보', '세금계산서'], ['사업자등록번호', P.bizNo || ''], ['담당자 / 이메일', (P.contact || '') + ' / ' + (P.email || '')],
+      ['첨부파일', g.excl ? g.excl.file : '빅뱅 제외본(YGP 전달) 파일을 첨부하세요 — 원본(빅뱅 포함)은 첨부하지 않습니다'],
       ['관련문서', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료')], ['결재 라인 (위임전결)', approval(inv.supply)]];
     TXT['basic-' + k] = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pBasic-' + k).innerHTML = kv(basic, 'basic-' + k);
-    // 1. 로열티 상세 내역 — 매출 품의 작성 가이드 지정양식. 정산월 = 판매월 다음 달, 프로젝트 = BIS 프로젝트명(YGP MD: "MD")
-    var fixed = '1. 로열티 상세 내역\n- 정산월 : ' + YGP.addMonths(ym, 1) + '\n- 프로젝트 : ' + ((md ? PUM.mdProject : PUM.cbProject) || 'MD') + '\n- 사업구조 : ' + (PUM.struct || 'RS') + '\n- MG : -\n- 통화 : KRW\n- 환율 : 1';
-    TXT['fixed-' + k] = fixed; $('pFixed-' + k).textContent = fixed;
-    var d1 = '2. ' + mNum + '월 ' + (md ? 'MD 로열티 내역' : '가수 MD_응원봉 디자인상표권 사용료') + '\n\n- 총공급가액 : ' + fmt(inv.supply) + '원 - VAT : ' + fmt(inv.vat) + '원 - 총금액 : ' + fmt(inv.total) + '원\n\n3. 아티스트별 ' + (md ? 'MD 로열티 내역' : '응원봉 내역');
-    TABLES['art-' + k] = { head: ['아티스트', '수량', '공급가액', '부가세', '공급대가'], numCols: [1, 2, 3, 4], sumLast: true,
-      rows: p.artists.map(function (x) { return [x.name, fmt(x.qty), fmt(x.supply), fmt(x.vat), fmt(x.total)]; }).concat([['합계', fmt(R.S.qty), fmt(R.S.supply), fmt(R.S.vat), fmt(R.S.total)]]) };
-    var note = '4. 참고사항 ' + ((md ? PUM.mdNote : PUM.cbNote) || '');
-    TXT['detail-' + k] = d1 + '\n\n' + tsv(TABLES['art-' + k]) + '\n\n' + note;
-    $('pDetail-' + k).textContent = d1; $('art-' + k).innerHTML = tableHtml(TABLES['art-' + k]); $('pNote-' + k).textContent = note;
-    TXT['all-' + k] = title + '\n\n' + TXT['basic-' + k] + '\n\n3. 상세내역\n\n' + fixed + '\n\n' + TXT['detail-' + k];
+    // 1. 로열티 상세 내역 — 지정양식. 정산월 = 판매월 = 정산서 월(26.10 품의: 2026.10 정산서 → 2026-10), 프로젝트 = BIS 프로젝트명(MD)
+    var fixed = '1. 로열티 상세 내역\n- 정산월 : ' + ym + '\n- 프로젝트 : ' + ((md ? PUM.mdProject : PUM.cbProject) || 'MD') + '\n- 사업구조 : ' + (PUM.struct || 'RS') + '\n- MG : -\n- 통화 : KRW\n- 환율 : 1';
+    $('pFixed-' + k).textContent = fixed;
+    var gross = p.gross || {}, noGross = p.artists.filter(function (x) { return gross[YGP.K(x.name)] == null; }).map(function (x) { return x.name; });
+    TABLES['art-' + k] = { head: ['판매월', '아티스트', '권역', '판매수량', '총 매출 (vat-)', '로열티 (vat-)'], numCols: [3, 4, 5], sumLast: true,
+      rows: p.artists.map(function (x) { var gv = gross[YGP.K(x.name)]; return [ym, x.name, '글로벌', fmt(x.qty), gv == null ? '-' : fmt(gv), fmt(x.supply)]; })
+        .concat([['합계', '', '', fmt(R.S.qty), fmt(p.artists.reduce(function (a, x) { return a + (gross[YGP.K(x.name)] || 0); }, 0)), fmt(R.S.supply)]]) };
+    if (noGross.length) g.flags.push({ level: 'warn', text: '판매월 표 총 매출: "제품매출" 시트에서 ' + noGross.join(', ') + ' 매출을 찾지 못해 "-"로 두었습니다' });
+    var note = '2. 참고사항\n' + ((md ? PUM.mdNote : PUM.cbNote) || '');
+    TXT['note-' + k] = note;
+    $('art-' + k).innerHTML = tableHtml(TABLES['art-' + k]); $('pNote-' + k).textContent = note;
+    TXT['fixed-' + k] = fixed + '\n' + tsv(TABLES['art-' + k]);
+    TXT['all-' + k] = title + '\n\n' + TXT['basic-' + k] + '\n\n3. 상세내역\n' + TXT['fixed-' + k] + '\n\n' + note;
 
     // ERP
-    var head = [['회계일자', inv.date || '-'], ['증빙구분', '전자세금계산서'], ['청구처', (P.vendorName || '') + ' (' + (P.vendor || '') + ')'], ['통화 / 환율', 'KRW / 1'],
-      ['제목', title.replace('[매출품의] ', '')], ['세금계산서 (부가세만 생성)', '공급가액 ' + fmt(inv.supply) + ' · 세액 ' + fmt(inv.vat) + ' · 합계 ' + fmt(inv.total) + ' (계산서일자 ' + (inv.date || '-') + ', 빅뱅 제외)'],
-      ['입금예정일', pay || '-'], ['결재조건', '입금계좌'], ['거래내역 엑셀 업로드', R.lines.length + '줄 · 대변 합계 ' + fmt(lineSum) + '원']];
+    // ERP AR마스터·계산서등록 화면 순서 (26.10 AR26111000001·AR26111000002 화면 기준)
+    var head = [['인보이스여부', '아니오'], ['증빙서류', '전자세금계산서'], ['계산서발행구분', '정발행'], ['AR유형', '국내매출'], ['회계일자', inv.date || '-'],
+      ['청구처', (P.vendor || '') + ' ' + (P.vendorName || '')], ['결제조건', '입금계좌'], ['입금예정일', pay || '-'], ['사업체 / 사업부', '1000 YG엔터테인먼트 / 1 YG엔터테인먼트'],
+      ['프로젝트', '_ (프로젝트공통)'], ['회계부서', (P.dept || '') + ' ' + (P.deptName || '')], ['통화 / 환율', 'KRW / 1'], ['제목', title.replace('[매출품의] ', '')], ['기안문서', '위 매출품의 선택'],
+      ['계산서등록 · 부가세일자', inv.date || '-'], ['계산서등록 · 부가세코드', '과세(세금계산서)'], ['계산서등록 · 사업자번호 / 판매처', (P.bizNo || '') + ' / ' + (P.vendor || '')],
+      ['계산서등록 · 공급가액 / 세액', fmt(inv.supply) + ' / ' + fmt(inv.vat) + ' (빅뱅 제외)'],
+      ['거래내역 엑셀 업로드', R.lines.length + '줄 · 대변 합계 ' + fmt(lineSum) + '원']];
     TXT['head-' + k] = head.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pHead-' + k).innerHTML = kv(head, 'head-' + k);
     TABLES['ar-' + k] = { head: ['프로젝트', '그룹', '아티스트', '대변금액', '적요'], numCols: [3], sumLast: true,

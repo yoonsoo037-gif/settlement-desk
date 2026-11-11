@@ -376,6 +376,8 @@ var VIEW = `    <!-- 탭 1: 업로드 → 대시보드 → YG검토본 -->
       <section class="panel" id="s-pum">
         <div class="ph"><h2>품의 입력 내용</h2>
           <p>직전 분기 품의 양식·문구 그대로입니다. 그룹웨어 입력 순서대로 위에서부터 복사하세요.</p></div>
+        <div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk">전체 복사</button></header>
+          <div class="body"><div id="pApproval" style="margin-bottom:8px"></div><dl class="kv" id="pChk"></dl></div></div>
         <div class="form">
           <label for="inSettle">정산월 (품의 상신월)<input type="month" id="inSettle"></label>
           <label for="inTx">거래일자 (세금계산서 작성일)<input type="date" id="inTx"></label>
@@ -400,8 +402,6 @@ var VIEW = `    <!-- 탭 1: 업로드 → 대시보드 → YG검토본 -->
             </div></div></div>
         <div class="block"><header><h3>3. 누적 로열티 · 4. 첨부파일 · 5. 참고사항</h3><button class="btn sm" data-copy="tail">문구 복사</button></header>
           <div class="body"><pre class="fmt" id="pTail"></pre><div class="hist" id="hist"></div></div></div>
-        <div class="block"><header><h3>결재선 (위임전결기준표 261006 · 사업부문 매출 품의)</h3></header>
-          <div class="body"><div id="pApproval"></div></div></div>
       </section>
     </div>
 
@@ -614,7 +614,13 @@ function mount(ctx) {
     var tsv = function (t) { return [t.head].concat(t.rows).map(function (r) { return r.join('\t'); }).join('\n'); };
     TXT.all = [TXT.title, '', TXT.req, '', '1. 기본 내역 / 2. 세금계산서 발행 정보', TXT.basic, '', '3. 상세내역', TXT.fixed, '', tsv(TABLES.fixedTable), '', TXT.summary, '',
       $('catTitle').textContent, tsv(TABLES.catTable), '', $('memTitle').textContent, tsv(TABLES.memTable), '', TXT.tail].join('\n');
-    $('pApproval').innerHTML = '<b>' + esc(a.band) + '</b><br><span class="muted">' + esc(a.line) + '</span>' + (CFG.APPROVAL_NOTE ? '<br><span class="small muted">' + esc(CFG.APPROVAL_NOTE) + '</span>' : '');
+    $('pApproval').innerHTML = CFG.APPROVAL_NOTE ? '<span class="small muted">' + esc(CFG.APPROVAL_NOTE) + '</span>' : '';
+    // 결재 전 체크: 26.2Q 품의 기준 — 첨부는 YG검토본 1개, 직전 분기 품의·연장 합의서는 관련문서
+    var pq = qi.q === 1 ? { y: qi.y - 1, q: 4 } : { y: qi.y, q: qi.q - 1 };
+    var chk = [['결재 라인 (위임전결)', a.band + ': ' + a.line], ['첨부파일 1', S.fileName.replace(/\.xlsx?$/i, '') + '_YG검토.xlsx (정산 탭에서 내려받은 YG검토본)'],
+      ['관련문서 1', "[매출품의] " + pq.y + "년 " + pq.q + "분기 'IPX-트레저' TRUZ 캐릭터 상품 판매 로열티 정산의 건 (전 분기 결재 문서)"]];
+    (CFG.RELATED || []).forEach(function (d, i) { chk.push(['관련문서 ' + (i + 2), d]); });
+    TXT.chk = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk').innerHTML = kv(chk, 'chk');
   }
 
   function kv(list, grp) {

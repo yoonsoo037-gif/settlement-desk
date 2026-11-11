@@ -247,7 +247,8 @@ function mount(ctx) {
     '<li><b>ERP 줄</b>: "② 아티스트별 - 가수" 공급가액 = 대변금액. MD는 매핑표 순서·코드(원본 "BABYMONSTER" = ERP "BABYMONSTER_라미제외" 6인, "BABYMONSTER(라미포함)" = ERP "BABYMONSTER" 7인), 응원봉은 원본 순서·프로젝트 "_"·트레저 → "트레저(10인)". 0원 행 제외.</li>' +
     '<li><b>관리항목1·2</b>: 정산월 1일~말일 (MD 날짜 서식 / 응원봉 8자리 숫자).</li></ol></details></div>' +
     '<div class="tabpanel" id="p-pum" hidden>' + kinds.map(function (k) {
-      return sec(k, '<div class="allcopy"><button class="btn primary" data-copy="all-' + k + '">본문 전체 복사</button></div>' +
+      return sec(k, '<div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pChk-' + k + '"></dl></div></div>' +
+        '<div class="allcopy"><button class="btn primary" data-copy="all-' + k + '">본문 전체 복사</button></div>' +
         '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title-' + k + '">복사</button></header><div class="body"><div id="pTitle-' + k + '"></div></div></div>' +
         '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic-' + k + '">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic-' + k + '"></dl></div></div>' +
         '<div class="block fixed"><header><h3>3. 상세내역 — 1. 로열티 상세 내역 <span class="stamp">지정양식</span></h3><button class="btn sm" data-copy="fixed-' + k + '">복사</button></header><div class="body"><pre class="fmt" id="pFixed-' + k + '"></pre>' +
@@ -282,8 +283,12 @@ function mount(ctx) {
       ['금액', fmt(inv.supply)], ['VAT', fmt(inv.vat)], ['총금액', fmt(inv.total)], ['프로젝트', '프로젝트공통 (_)'], ['입금예정일 (이내)', pay || '-'],
       ['아티스트(그룹)', '그룹공통 (_)'], ['아티스트(개인)', (P.artistName || '아티스트공통') + ' (' + (P.artist || '') + ')'], ['매출 종류', '로열티'], ['계약서 작성 여부', '작성'], ['통화종류', 'KRW'],
       ['청구방법', '정산서 수령 후'], ['에이전시 유/무', '없음'], ['발행정보', '세금계산서'], ['사업자등록번호', P.bizNo || ''], ['담당자 / 이메일', (P.contact || '') + ' / ' + (P.email || '')],
-      ['첨부파일', g.excl ? g.excl.file : '빅뱅 제외본(YGP 전달) 파일을 첨부하세요 — 원본(빅뱅 포함)은 첨부하지 않습니다'],
-      ['관련문서', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료')], ['결재 라인 (위임전결)', approval(inv.supply)]];
+
+    ];
+    // 결재 전 체크: 26.10 품의 26-0852·0853 기준 — 첨부는 빅뱅 제외본 1개, 전월 품의는 관련문서로 연결
+    var chk = [['결재 라인 (위임전결)', approval(inv.supply)], ['첨부파일 1', g.excl ? g.excl.file : '빅뱅 제외본(YGP 전달, 암호 제거본) — 아직 올리지 않음. 원본(빅뱅 포함)은 첨부하지 않습니다'],
+      ['관련문서 1', '[매출품의] YGP MD 로열티 ' + (+YGP.addMonths(ym, -1).slice(5)) + '월 정산의 건' + (md ? '' : '_응원봉 디자인권 사용료') + ' (전월 결재 문서)']];
+    TXT['chk-' + k] = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk-' + k).innerHTML = kv(chk, 'chk-' + k);
     TXT['basic-' + k] = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pBasic-' + k).innerHTML = kv(basic, 'basic-' + k);
     // 1. 로열티 상세 내역 — 지정양식. 정산월 = 판매월 = 정산서 월(26.10 품의: 2026.10 정산서 → 2026-10), 프로젝트 = BIS 프로젝트명(MD)

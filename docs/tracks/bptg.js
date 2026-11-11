@@ -186,6 +186,7 @@ function mount(ctx) {
     '<li><b>날짜</b>: 거래일자(세금계산서 발행일) = 분기 마지막 달 + 2개월 1일, 입금예정일 = 그 다음 달 말일.</li></ol></details></div>' +
 
     '<div class="tabpanel" id="p-pum" hidden><section class="panel"><div class="ph"><h2>매출품의 입력 내용</h2><p>직전 품의(26.2Q YGK-광고IP사업팀-26-0620) 양식·문구 그대로입니다.</p></div>' +
+    '<div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk">전체 복사</button></header><div class="body"><dl class="kv" id="pChk"></dl></div></div>' +
     '<div class="allcopy"><button class="btn primary" data-copy="all">본문 전체 복사</button></div>' +
     '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title">복사</button></header><div class="body"><div id="pTitle"></div></div></div>' +
     '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 세금계산서 발행 정보</h3><button class="btn sm" data-copy="basic">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic"></dl></div></div>' +
@@ -226,10 +227,22 @@ function mount(ctx) {
       ['금액', fmt(R.supply)], ['VAT', fmt(R.vat)], ['총금액', fmt(R.total)], ['프로젝트', (B.projName || '') + ' (' + (B.proj || '') + ')'], ['입금예정일 (이내)', R.pay],
       ['아티스트(그룹)', (B.groupName || '') + ' (' + (B.group || '') + ')'], ['아티스트(개인)', (B.artistName || '') + ' (' + (B.artist || '') + ')'], ['매출 종류', '로열티'],
       ['계약서 작성 여부', '작성'], ['전체계약기간', B.contract || ''], ['통화종류', 'KRW'], ['청구방법', '정산서 수령 후'], ['에이전시 유/무', '없음'],
-      ['발행정보', '세금계산서'], ['사업자등록번호', B.bizNo || ''], ['담당자 / 이메일', (B.contact || '') + ' / ' + (B.email || '')],
-      ['관련문서', '[매출품의] 블랙핑크더게임(BPTG) ' + String(pq[0]).slice(2) + '년 ' + pq[1] + '분기 매출 정산 건' + (B.relatedDoc ? ' / ' + B.relatedDoc : '')],
-      ['첨부파일', '월별 정산서 엑셀·공문 PDF·MD 관련 수불부·YouTube/AdMob/Unity 정산서 (' + Q.months.map(function (r) { return +r.ym.slice(5) + '월'; }).join('·') + ')'],
-      ['결재 라인 (위임전결)', approval(R.supply)]];
+      ['발행정보', '세금계산서'], ['사업자등록번호', B.bizNo || ''], ['담당자 / 이메일', (B.contact || '') + ' / ' + (B.email || '')]];
+    // 결재 전 체크: 26.2Q 품의 첨부 18개(월별 6종) 기준. 매출이 없는 항목(서비스 종료 후 MD·IAA·YouTube)은 자료가 없으므로 뺀다
+    var chk = [['결재 라인 (위임전결)', approval(R.supply)]], ai = 0;
+    Q.months.forEach(function (m) {
+      var c = P.comp[m.ym] || {}, y = m.ym.slice(0, 4), mm = m.ym.slice(5), y2 = y.slice(2), nx = BPTG.addMonths(m.ym, 1), has = function (k) { return Math.abs(c[k] || 0) >= 1; };
+      var list = [];
+      if (has('YouTube 매출')) list.push('BPTG YouTube 수익_' + nx.slice(2, 4) + '.' + nx.slice(5) + ' 정산 (' + y2 + '년 ' + mm + '월 귀속).xlsx');
+      if (has('IAA 매출총이익')) list.push('BPTG_AdMob_광고매출_FY_' + y + '_' + mm + '.xlsx', 'BPTG_Unity 광고매출 정산서(' + y2 + '년 ' + mm + '월 귀속).xlsx');
+      list.push('BPTG_게임매출_' + y + '.' + mm + '_정산서_YG.xlsx');
+      if (has('MD_1 매출총이익') || has('MD_2 매출총이익')) list.push('MD 관련 수불부_' + BPTG.monthEnd(m.ym).replace(/-/g, '.') + '_YG.xlsx');
+      list.push('공문_BPTG_게임매출_' + y + '.' + mm + '_정산서_YG.pdf');
+      list.forEach(function (n) { chk.push(['첨부파일 ' + (++ai) + ' (' + (+mm) + '월)', n]); });
+    });
+    chk.push(['관련문서 1', '[매출품의] 블랙핑크더게임(BPTG) ' + String(pq[0]).slice(2) + '년 ' + pq[1] + '분기 매출 정산 건 (전 분기 결재 문서)']);
+    if (B.relatedDoc) chk.push(['관련문서 2', B.relatedDoc]);
+    TXT.chk = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk').innerHTML = kv(chk, 'chk');
     TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
     $('pBasic').innerHTML = kv(basic, 'basic');
     var fixed = '1. 상세 내역\n- 정산월 : ' + R.tx.slice(0, 7) + '\n- 프로젝트 : ' + (B.bisProject || 'BPTG') + '\n- 사업구조 : ' + (B.struct || 'MG_RS') + '\n- MG : -\n- 통화 : KRW\n- 환율 : 1';

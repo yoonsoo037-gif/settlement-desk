@@ -168,6 +168,15 @@ function tableHtml(t) {
   });
   return h;
 }
+// 위임전결기준표(261006) 1.1.2 매출 품의 · 사업 부문 (원화 환산 공급가액 기준)
+function approval(krw) {
+  var NOTE = ' — 광고IP사업팀은 팀 리더·그룹 리더 결재를 그룹리더가 한 번에 받음';
+  if (krw == null) return '환율을 입력하면 원화 기준 구간이 표시됩니다';
+  if (krw < 5e6) return '500만원 미만 (합의종결): 결재 팀 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당' + NOTE;
+  if (krw < 5e7) return '500만원 이상 5,000만원 미만 (합의종결): 결재 팀 리더 → 그룹 리더(최종) · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더)' + NOTE;
+  if (krw < 3e8) return '5,000만원 이상 3억원 미만: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 결재 부문 대표(최종)' + NOTE;
+  return '3억원 이상: 결재 팀 리더 → 그룹 리더 · 합의: 재무관리팀 담당 & 회계팀 담당 → 담당 팀 리더(재무관리그룹 리더) → CFO(경영지원부문 대표) → 부문 대표 → 대표이사(최종)' + NOTE;
+}
 function kv(list, grp) {
   return list.map(function (x, i) { return '<dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd><button class="btn sm" data-copyval="' + grp + ':' + i + '">복사</button>'; }).join('');
 }
@@ -202,6 +211,7 @@ function mount(ctx) {
     '<li><b>원천세</b>: 총액 − 실입금(정산서 기준, 총액 10% 절사와 대조). <b>AR</b>: 금액 0인 줄 제외, 관리항목 = 판매월 1일~말일 · JP.</li></ol></details></div>' +
 
     '<div class="tabpanel" id="p-pum" hidden><section class="panel"><div class="ph"><h2>매출품의 입력 내용</h2><p>직전 품의(YGK-광고IP사업팀-26-0622, 26.7월분) 양식·문구 그대로입니다. 첨부: 정산서 PDF.</p></div>' +
+    '<div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk">전체 복사</button></header><div class="body"><dl class="kv" id="pChk"></dl></div></div>' +
     '<div class="allcopy"><button class="btn primary" data-copy="all">본문 전체 복사</button></div>' +
     '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title">복사</button></header><div class="body"><div id="pTitle"></div></div></div>' +
     '<div class="block"><header><h3>필수 입력 · 1. 기본 내역 · 2. 발행 정보</h3><button class="btn sm" data-copy="basic">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic"></dl></div></div>' +
@@ -252,6 +262,13 @@ function mount(ctx) {
     TABLES.paidTable = { head: ['Artist', 'Amount Paid (tax incl.)', '스티커 출시일'], numCols: [1], sumLast: true,
       rows: R.items.map(function (it) { return [it.key, fmt2(it.raw), it.cfg ? it.cfg.release || '' : '']; }).concat([['TOTAL', fmt(R.total), '']]) };
     var won = fxE ? Math.round(R.total * fxE) : null;
+    // 결재 전 체크: 26.7월 품의 26-0622 기준 — 첨부는 LINE Note of Payment PDF 1개, 전월 품의는 관련문서
+    var EN = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    var prevYm = (function () { var y = +p.ym.slice(0, 4), m = +p.ym.slice(5, 7) - 1; if (!m) { y--; m = 12; } return { y: y, m: m }; })();
+    var chk = [['결재 라인 (위임전결' + (won == null ? '' : ', 원화 ' + fmt(won) + '원 기준') + ')', approval(won)],
+      ['첨부파일 1', '【YG Entertainment Inc.】LINE スタンプ（月額） Note_of_Payment_' + EN[+p.ym.slice(5, 7) - 1] + '_' + p.ym.slice(0, 4) + '.pdf (LINE 정산서 PDF)'],
+      ['관련문서 1', '[매출품의] ' + prevYm.y + '년 라인프리미엄 YG 아티스트 아이템 ' + prevYm.m + '월 매출 정산 (전월 결재 문서)']];
+    TXT.chk = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk').innerHTML = kv(chk, 'chk');
     var wonTxt = won == null ? '(환율 입력)' : won >= 1e4 ? '약 ' + Math.floor(won / 1e4) + '만원' : '약 ' + fmt(won) + '원';
     var invDot = p.invoice ? p.invoice.slice(2).replace(/-0?/g, '.') : '';
     var d2 = '2. 매출금액 : (tax incl.) : ' + fmt(R.total) + ' 円 (tax 제외) : ' + (R.net == null ? '-' : fmt(R.net)) + ' 円\n\n' +

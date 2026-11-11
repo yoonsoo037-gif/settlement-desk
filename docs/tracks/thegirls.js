@@ -296,6 +296,7 @@
       '</section></div>' +
 
       '<div class="tabpanel" id="p-pum" hidden><section class="panel"><div class="ph"><h2>매입품의 입력 내용</h2><p>직전 매입품의(YGK-광고IP사업팀-26-0596) 양식·문구 그대로입니다. 세금계산서를 받은 뒤 작성일자를 넣으세요.</p></div>' +
+      '<div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk">전체 복사</button></header><div class="body"><dl class="kv" id="pChk"></dl></div></div>' +
       '<div class="form"><label>거래일자 (세금계산서 작성일)<input type="date" id="inTx"></label>' +
       '<label class="chk"><span>추후 23% 재쉐어 문구</span><select id="inReshare"><option value="1">포함</option><option value="0">제외</option></select></label>' +
       '<label class="chk"><span>정산 종료 비고</span><select id="inEnd"><option value="0">넣지 않음</option><option value="1">넣음 (마지막 회차)</option></select></label>' +
@@ -357,7 +358,14 @@
       TXT.title = "[매입품의] " + label + " 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)";
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '거주자'], ['외국환 신고 필요여부', '1.경상거래 해당없음 / 2.자본거래 해당없음'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'],
-        ['계약기간', T.contract || ''], ['총금액 (VAT제외)', fmt(R.supply)], ['기간', R.from + ' ~ ' + R.to], ['통화 종류', 'KRW'], ['결재 라인 (위임전결)', approvalBuy(R.supply)], ['ERP 결재선', erpBuyLine(R.supply)]];
+        ['계약기간', T.contract || ''], ['총금액 (VAT제외)', fmt(R.supply)], ['기간', R.from + ' ~ ' + R.to], ['통화 종류', 'KRW']];
+      // 결재 전 체크: 26-0596 품의 기준 — 음원 매출 데이터 + 테이크원 매출세금계산서, 직전 회차 품의·서비스 종료 합의서는 관련문서
+      var chk = [['결재 라인 (위임전결)', approvalBuy(R.supply)], ['ERP 결재선', erpBuyLine(R.supply)],
+        ['첨부파일 1', label + ' 블랙핑크더게임 THE GIRLS 음원 매출 데이터_FINAL_(작성일).xlsx (정산서 탭에서 내려받은 파일)'],
+        ['첨부파일 2', "테이크원 발행 매출세금계산서 PDF (예: BPTG_발행일_(주)YG엔터테인먼트_'THE GIRLS' 음원매출 " + label + "_매출세금계산서.pdf)"],
+        ['관련문서 1', "직전 회차 테이크원 매입품의 — [매입품의] (직전 기간) 블랙핑크더게임 OST 'THE GIRLS' 음원 로열티 수익 배분 (테이크원컴퍼니)"]];
+      if ((CFG.BPTG || {}).relatedDoc) chk.push(['관련문서 2', CFG.BPTG.relatedDoc]);
+      TXT.chk = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk').innerHTML = kv(chk, 'chk');
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var re = Math.round(R.gross * (T.reshareRate || 0.23));
       TXT.detail = '1. 내용 : 블랙핑크더게임 OST "THE GIRLS" ' + R.rangeText.replace(' ~ ', '~') + ' 음원 로열티 정산(' + (T.detailName || T.name || '') + ')\n\n2. 기간 : ' + R.rangeText + '\n' +
@@ -486,6 +494,7 @@
       '<div class="row"><button class="btn" id="btnSave">이 반기 확정 저장</button><span class="small muted" id="outMsg"></span></div></section></div>' +
 
       '<div class="tabpanel" id="p-pum" hidden><section class="panel"><div class="ph"><h2>매입품의 입력 내용</h2><p>직전 매입품의(YGK-광고IP사업팀-26-0600) 양식·문구 그대로입니다. 거래일자는 인보이스 작성일입니다.</p></div>' +
+      '<div class="block chk"><header><h3>결재 전 체크 — 결재 라인 · 첨부파일 · 관련문서</h3><button class="btn sm" data-copy="chk">전체 복사</button></header><div class="body"><dl class="kv" id="pChk"></dl></div></div>' +
       '<div class="form"><label>거래일자 (인보이스 작성일)<input type="date" id="inTx"></label><div class="allcopy"><button class="btn primary" data-copy="all">본문 전체 복사</button></div></div>' +
       '<div class="block"><header><h3>제목</h3><button class="btn sm" data-copy="title">복사</button></header><div class="body"><div id="pTitle"></div></div></div>' +
       '<div class="block"><header><h3>필수 입력 · 1. 기본 내역</h3><button class="btn sm" data-copy="basic">전체 복사</button></header><div class="body"><dl class="kv" id="pBasic"></dl></div></div>' +
@@ -553,7 +562,13 @@
       $('pTitle').textContent = TXT.title;
       var basic = [['비거주자 여부', '비거주자'], ['외국환 신고 필요여부', '직전 품의 선택값과 동일'], ['계약서 작성 여부', '작성'], ['지급방법', '송금'], ['전체계약금액 (VAT제외)', fx ? fmt2(R.totalU) : '-'], ['계약기간', WC.contract || ''], ['통화 종류', 'USD']];
       var buyKrw = R.writers.reduce(function (t, w) { return t + (w.totalK || 0); }, 0);
-      basic.push(['결재 라인 (위임전결, 원화 ' + fmt(buyKrw) + '원 기준)', approvalBuy(buyKrw)], ['ERP 결재선', erpBuyLine(buyKrw)]);
+      // 결재 전 체크: 26-0600 품의 기준 — 작가별 Royalty Report + 작가별 인보이스, 직전 반기 품의는 관련문서
+      var prevHf = hf.h === 1 ? TG.half(hf.y - 1, 2) : TG.half(hf.y, 1);
+      var chk = [['결재 라인 (위임전결, 원화 ' + fmt(buyKrw) + '원 기준)', approvalBuy(buyKrw)], ['ERP 결재선', erpBuyLine(buyKrw)]], ci = 0;
+      R.writers.forEach(function (w) { chk.push(['첨부파일 ' + (++ci), '[' + w.key.charAt(0) + w.key.slice(1).toLowerCase() + '] ' + hf.label + ' BLACKPINK THE GAME_THE GIRLS Song Royalty Report.xlsx (리포트 탭에서 내려받은 파일)']); });
+      R.writers.forEach(function (w) { chk.push(['첨부파일 ' + (++ci), w.key + ' 발행 ' + hf.label + ' 인보이스 PDF (받은 파일)']); });
+      chk.push(['관련문서 1', "[매입품의] 블랙핑크더게임 OST 'THE GIRLS' " + prevHf.kor + " 음원 로열티 수익 작가 배분 건 (직전 반기 결재 문서)"]);
+      TXT.chk = chk.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n'); $('pChk').innerHTML = kv(chk, 'chk');
       $('pBasic').innerHTML = kv(basic, 'basic'); TXT.basic = basic.map(function (x) { return x[0] + '\t' + x[1]; }).join('\n');
       var order = R.writers.slice().sort(function (a, b) { return b.rate - a.rate; });
       var names = order.map(function (w) { return w.detailName || w.name; }).join(', ');

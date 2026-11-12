@@ -1,14 +1,14 @@
 /* 정산 캘린더 — 월별 할 일: 선택한 달에 정산 프로젝트별로 "언제 · 무엇을 · 어떤 순서로" 해야 하는지 보여 준다.
  * - 맨 위: 이 달 YG 품의 마감일(공통) + 이 달 전체 할 일 순서(날짜순)
  * - 아래: 프로젝트별 카드(YGP · TRUZ · BPTG 테이크원)에 할 일 ①②③ 순서, 날짜, D-day, 완료 체크
- * 규칙은 TASKS 한 곳에 모은다. 마감일이 토·일·공휴일이면 직전 영업일로 당긴다(HOLI 목록 + DB cfg|holidays).
+ * 규칙은 TASKS 한 곳에 모은다. 마감일이 토·일·빨간날(HOLI 목록)이면 직전 영업일로 당긴다.
  * 완료 체크·날짜 수정·담당자 이름은 DB 시트 "CAL_일정" 탭에 저장한다(키: done|… / 프로젝트|YYYY-MM|번호 / cfg|acct). */
 (function () {
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var DOW = ['일', '월', '화', '수', '목', '금', '토'];
   function day(y, m, d) { return new Date(y, m - 1, d); }                       // m 이 13 이상·0 이하면 연도 자동 이월
   // 관공서 공휴일(대체공휴일·선거일 포함). 2026년부터 노동절(5/1)·제헌절(7/17) 공휴일. 근거: 우주항공청 월력요항·공개 달력 자료(2026.6~ 확인)
-  // 회사 휴무일 등 추가 날짜는 DB 시트 CAL_일정의 "cfg|holidays" 행 시작일 칸에 YYYY-MM-DD 를 쉼표로 적으면 함께 반영된다
+  // 회사가 공식적으로 쉬는 달력 빨간날(법정 공휴일·대체공휴일·선거일)만 넣는다. 임시공휴일은 정부 지정 시 추가
   var HOLI = {
     '2026-01-01': '신정', '2026-02-16': '설날 연휴', '2026-02-17': '설날', '2026-02-18': '설날 연휴', '2026-03-02': '대체공휴일(삼일절)', '2026-05-01': '노동절',
     '2026-05-05': '어린이날', '2026-05-25': '대체공휴일(부처님오신날)', '2026-06-03': '지방선거', '2026-07-17': '제헌절', '2026-08-17': '대체공휴일(광복절)',
@@ -20,9 +20,8 @@
     '2028-05-05': '어린이날', '2028-06-06': '현충일', '2028-07-17': '제헌절', '2028-08-15': '광복절', '2028-10-02': '추석 연휴', '2028-10-03': '추석·개천절', '2028-10-04': '추석 연휴',
     '2028-10-05': '대체공휴일(개천절)', '2028-10-09': '한글날', '2028-12-25': '성탄절'
   };
-  var EXTRA = {};
   var key0 = function (d) { return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate(); };
-  function holiday(d) { var k = key0(d); return HOLI[k] || EXTRA[k] || ''; }
+  function holiday(d) { var k = key0(d); return HOLI[k] || ''; }
   function off(d) { return d.getDay() === 0 || d.getDay() === 6 || !!holiday(d); }
   function prevBiz(dt) { var d = new Date(dt); while (off(d)) d.setDate(d.getDate() - 1); return d; }   // 토·일·공휴일 → 직전 영업일
   function nextBiz(dt) { var d = new Date(dt); while (off(d)) d.setDate(d.getDate() + 1); return d; }   // 토·일·공휴일 → 다음 영업일
@@ -105,7 +104,6 @@
   }
   function monthData(y, m) {
     var ov = loadOv(), acct = (ov['cfg|acct'] || {}).d || '';
-    EXTRA = {}; String((ov['cfg|holidays'] || {}).d || '').split(/[,\s]+/).forEach(function (x) { if (/^\d{4}-\d{2}-\d{2}$/.test(x)) EXTRA[x] = '회사 휴무'; });
     var R = TASKS(y, m, acct), key = ym(y, m);
     R.projects.forEach(function (p) {
       var prevD = null, nextMarked = false;
@@ -159,7 +157,7 @@
         (p.memo && p.tasks.length ? '<p class="tl-memo small">※ ' + esc(p.memo) + '</p>' : '') + '</article>';
     }).join('');
     root.innerHTML =
-      '<div class="ph"><h2>정산 캘린더 · 월별 할 일</h2><p>선택한 달에 무엇을 어떤 순서로 해야 하는지 정산별로 보여 줍니다. 끝낸 일은 번호를 눌러 완료 체크하세요(DB 시트에 저장). 마감일이 주말·공휴일이면 직전 영업일로 당깁니다(2026~2028년 공휴일 반영).</p>' +
+      '<div class="ph"><h2>정산 캘린더 · 월별 할 일</h2><p>선택한 달에 무엇을 어떤 순서로 해야 하는지 정산별로 보여 줍니다. 끝낸 일은 번호를 눌러 완료 체크하세요(DB 시트에 저장). 마감일이 주말·공휴일이면 직전 영업일로 당깁니다(2026~2028년 빨간날 반영).</p>' +
       (MSG ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">' + esc(MSG) + '</p>' : SRV === false ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">서버에 연결되지 않아 완료 체크·날짜 수정이 이 브라우저에만 저장됩니다</p>' : '') + '</div>' +
       '<div class="row cal-nav"><button class="btn sm" data-mon="-1" type="button">◀ 이전 달</button><b class="cal-title">' + y + '년 ' + m + '월</b><button class="btn sm" data-mon="1" type="button">다음 달 ▶</button><button class="btn sm" data-mon="0" type="button">이번 달</button></div>' +
       '<div class="mo-yg"><b>YG 품의 마감일 ' + esc(dl.text) + '</b><span>이 달 올릴 품의는 마감 전날 <b>' + esc(md(dl.before)) + '</b>까지 상신 · 늦어지는 정산은 마감 전에 회계팀에 미리 공유</span>' +

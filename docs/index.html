@@ -274,6 +274,11 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 .tl-t { font-size: 13.5px; font-weight: 600; }
 .tl-memo { margin: 0; padding: 8px 10px; border-radius: 10px; background: var(--warn-bg); color: var(--warn); }
 .tl-nx { margin: 0; border-top: 1px dashed var(--line); padding-top: 8px; }
+.tl-editbtn { padding: 3px 10px; font-size: 12px; }
+.tl-ov { font-size: 11px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: var(--warn-bg); color: var(--warn); cursor: help; }
+.tl-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.tl-edit input { padding: 4px 6px; border: 1.5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font-size: 13px; }
+.tl-tools { gap: 6px; flex-wrap: wrap; }
 </style>
 </head>
 <body class="locked">
@@ -330,18 +335,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261112a"></script>
-<script src="calendar.js?v=20261112a"></script>
+<script src="config.js?v=20261112b"></script>
+<script src="calendar.js?v=20261112b"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261112a"></script>
-<script src="tracks/truz.js?v=20261112a"></script>
-<script src="tracks/thegirls.js?v=20261112a"></script>
-<script src="tracks/line.js?v=20261112a"></script>
-<script src="tracks/ygp.js?v=20261112a"></script>
-<script src="tracks/bptg.js?v=20261112a"></script>
+<script src="tracks/truz-review.js?v=20261112b"></script>
+<script src="tracks/truz.js?v=20261112b"></script>
+<script src="tracks/thegirls.js?v=20261112b"></script>
+<script src="tracks/line.js?v=20261112b"></script>
+<script src="tracks/ygp.js?v=20261112b"></script>
+<script src="tracks/bptg.js?v=20261112b"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };

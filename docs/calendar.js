@@ -56,7 +56,7 @@
     out.push({ id: 'ygp', name: 'YGP', sub: 'MD 로열티 · 응원봉 · 매월', color: 'var(--mint-2)', bg: 'var(--mint-soft)', label: pm + '월분 정산', tasks: [
       { d: chk, t: 'YGP에 ' + pm + '월분 정산서 수령 예정일 확인', n: '9일 전후 수령인지, 더 늦어지는지 확인' },
       { d: dl.before, t: who + '께 YGP 정산 지연 여부 전달', n: 'YG 품의 마감일(' + dl.text + ') 이후에 정산서가 오므로 마감 전에 미리 공유' },
-      { d: r9, t: '정산서 수령 (원본 · 빅뱅 제외본)', n: '9일 부근까지 수령, 늦으면 10일' + (shiftNote(day(y, m, 9), r9) ? ' — ' + shiftNote(day(y, m, 9), r9) : '') },
+      { d: r9, t: '정산서 수령 (원본 · 빅뱅 제외본)', n: '9일 부근까지 수령, 늦으면 10일' + (shiftNote(day(y, m, 9), r9) ? ' — ' + shiftNote(day(y, m, 9), r9) + ' (그날까지 보내 달라고 YGP에 요청)' : '') },
       { d: r9, t: '받은 당일 바로 처리: 매출품의 2건(MD · 응원봉) → ERP → 회계팀 빅뱅 메일', n: '정산 계산기에서 원본·빅뱅 제외본을 함께 올리면 한 번에 생성' }] });
     // TRUZ — 분기
     var t = { id: 'truz', name: 'TRUZ', sub: 'IPX × 트레저 · 분기', color: 'var(--sky-2)', bg: 'var(--sky-soft)' };
@@ -66,7 +66,7 @@
       { t: '받는 즉시 처리: YG검토본 → 매출품의 → ERP', n: '바로 처리하면 다음 달 YG 품의 마감 전에 여유 있게 끝남' }]; }
     else if (ph === 2) { var ql = qLabel(y, m - 1); t.label = ql + ' 정산'; t.tasks = [
       { d: pre, t: ql + ' 매출품의 상신 여부 확인', n: '지난달에 끝냈으면 완료 체크' },
-      { d: dl.before, t: '(아직이면) 매출품의 상신 — YG 품의 마감 전', n: '정산서를 못 받았으면 ' + who + '께 지연 여부 전달' }]; }
+      { d: dl.end, t: '(아직이면) 매출품의 상신 — YG 품의 마감(' + dl.text + ') 내', n: '26.1Q 5/4 · 26.2Q 8/3 기안처럼 마감 기간 안에 상신 · 늦어지면 마감 전에 ' + who + '께 공유' }]; }
     else { t.tasks = []; t.nextHint = md(nextBiz(day(y, m + 1, 1))) + ' IPX에 ' + qLabel(y, m + 1) + ' 정산서 요청'; }
     out.push(t);
     // BPTG 테이크원 매입 — 분기
@@ -76,7 +76,7 @@
       { t: '데이터 받으면 정산서 만들어 테이크원에 보내고 세금계산서 발행 요청', n: '정산 계산기 THE GIRLS · 테이크원 메뉴' }]; }
     else if (ph === 2) { var bl = qLabel(y, m - 1); b.label = bl + ' 정산'; b.tasks = [
       { d: pre, t: '테이크원 세금계산서 수령 확인', n: '못 받았으면 재요청' },
-      { d: dl.before, t: '매입품의 상신 — YG 품의 마감 전', n: '세금계산서 작성일을 거래일자로 입력' }]; }
+      { d: dl.end, t: '매입품의 상신 — YG 품의 마감(' + dl.text + ') 내', n: '세금계산서 작성일을 거래일자로 입력 (25.4Q~26.2Q: 7/31 세금계산서 → 8/4 기안)' }]; }
     else { b.tasks = []; b.nextHint = md(prevBiz(day(y, m + 1, 15))) + ' 회계팀에 ' + qLabel(y, m + 1) + ' 데이터 요청'; }
     out.push(b);
     // LINE 프리미엄 — 매월: 중순 LINE 자동 메일(Note of Payment)로 전월분 정산서 수령 → 인보이스일 환율 → 품의·ERP (인수인계: "라인은 매월 중순에 자동 메일로 옴")
@@ -179,7 +179,7 @@
       '<div class="ph"><h2>정산 캘린더 · 월별 할 일</h2><p>선택한 달에 무엇을 어떤 순서로 해야 하는지 정산별로 보여 줍니다. 끝낸 일은 번호를 눌러 완료 체크하세요(DB 시트에 저장). 마감일이 주말·공휴일이면 직전 영업일로 당깁니다(2026~2028년 빨간날 반영).</p>' +
       (MSG ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">' + esc(MSG) + '</p>' : SRV === false ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">서버에 연결되지 않아 완료 체크·날짜 수정이 이 브라우저에만 저장됩니다</p>' : '') + '</div>' +
       '<div class="row cal-nav"><button class="btn sm" data-mon="-1" type="button">◀ 이전 달</button><b class="cal-title">' + y + '년 ' + m + '월</b><button class="btn sm" data-mon="1" type="button">다음 달 ▶</button><button class="btn sm" data-mon="0" type="button">이번 달</button></div>' +
-      '<div class="mo-yg"><b>YG 품의 마감일 ' + esc(dl.text) + '</b><span>이 달 올릴 품의는 마감 전날 <b>' + esc(md(dl.before)) + '</b>까지 상신 · 늦어지는 정산은 마감 전에 회계팀에 미리 공유</span>' +
+      '<div class="mo-yg"><b>YG 품의 마감일 ' + esc(dl.text) + '</b><span>전월 거래일자(세금계산서·인보이스 작성일) 건은 이 기간 안에 상신 · 늦어지는 정산은 마감 전 <b>' + esc(md(dl.before)) + '</b>까지 회계팀에 미리 공유</span>' +
         (hol.length ? '<span class="mo-hol">이 달 공휴일: ' + esc(hol.join(' · ')) + '</span>' : '') + '</div>' +
       '<section class="mo-order"><h3>' + m + '월 전체 할 일 순서</h3><ol>' + order + '</ol></section>' +
       '<div class="tl-grid">' + cards + '</div>';

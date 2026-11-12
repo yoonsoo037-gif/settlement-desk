@@ -283,6 +283,7 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 .cal-title { font-size: 17px; min-width: 110px; text-align: center; }
 .mo-yg { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 12px 14px; border-radius: 14px; background: var(--bad-bg); color: var(--bad); }
 .mo-yg span { font-size: 13px; color: var(--ink); }
+.mo-yg .mo-hol { flex-basis: 100%; font-size: 12.5px; color: var(--ink-2); }
 .mo-order { border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
 .mo-order h3 { margin: 0 0 8px; font-size: 15px; }
 .mo-order ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
@@ -362,18 +363,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261112e"></script>
-<script src="calendar.js?v=20261112e"></script>
+<script src="config.js?v=20261112g"></script>
+<script src="calendar.js?v=20261112g"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261112e"></script>
-<script src="tracks/truz.js?v=20261112e"></script>
-<script src="tracks/thegirls.js?v=20261112e"></script>
-<script src="tracks/line.js?v=20261112e"></script>
-<script src="tracks/ygp.js?v=20261112e"></script>
-<script src="tracks/bptg.js?v=20261112e"></script>
+<script src="tracks/truz-review.js?v=20261112g"></script>
+<script src="tracks/truz.js?v=20261112g"></script>
+<script src="tracks/thegirls.js?v=20261112g"></script>
+<script src="tracks/line.js?v=20261112g"></script>
+<script src="tracks/ygp.js?v=20261112g"></script>
+<script src="tracks/bptg.js?v=20261112g"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };

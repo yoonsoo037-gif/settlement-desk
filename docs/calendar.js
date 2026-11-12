@@ -55,11 +55,10 @@
     var dl = ygDeadline(y, m), pm = m === 1 ? 12 : m - 1, ph = phase(m), first = nextBiz(day(y, m, 1)), r9 = prevBiz(day(y, m, 9));
     var who = acct || '회계팀 담당';
     var out = [];
-    // YGP — 매월: 9일 수령인데 YG 품의 마감(3~5일)이 먼저 오므로, 마감 전에 지연을 미리 공유한다
+    // YGP — 매월: 9일 전후 전달이 확정이라, YG 품의 마감(3~5일) 부근에 회계팀에 9일 전달 예정임을 알리고 받자마자 처리
     var chk = first < dl.before ? first : prevBiz(addDays(dl.before, -1)), pre = first <= dl.before ? first : dl.before;   // 확인 단계는 마감 전날보다 늦지 않게
     out.push({ id: 'ygp', name: 'YGP', sub: 'MD 로열티 · 응원봉 · 매월', color: 'var(--mint-2)', bg: 'var(--mint-soft)', label: pm + '월분 정산', tasks: [
-      { d: chk, t: 'YGP에 ' + pm + '월분 정산서 수령 예정일 확인', n: '9일 전후 수령인지, 더 늦어지는지 확인' },
-      { d: dl.before, t: who + '께 YGP 정산 지연 여부 전달', n: 'YG 품의 마감일(' + dl.text + ') 이후에 정산서가 오므로 마감 전에 미리 공유' },
+      { d: dl.start, t: who + '께 알림: "YGP ' + pm + '월분 정산서는 ' + md(r9) + ' 전후 전달 예정입니다"', n: 'YG 품의 마감일(' + dl.text + ') 부근 — YGP 정산서는 9일 전후 전달이 확정이라 마감 뒤 상신됨을 미리 안내' },
       { d: r9, t: '정산서 수령 (원본 · 빅뱅 제외본)', n: '9일 부근까지 수령, 늦으면 10일' + (shiftNote(day(y, m, 9), r9) ? ' — ' + shiftNote(day(y, m, 9), r9) + ' (그날까지 보내 달라고 YGP에 요청)' : '') },
       { d: r9, t: '받은 당일 바로 처리: 매출품의 2건(MD · 응원봉) → ERP → 회계팀 빅뱅 메일', n: '정산 계산기에서 원본·빅뱅 제외본을 함께 올리면 한 번에 생성' }] });
     // TRUZ — 분기

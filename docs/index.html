@@ -255,7 +255,7 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 }
 @media (prefers-reduced-motion: no-preference) { .btn, .drop, .tab, .tile { transition: background .15s, border-color .15s, transform .15s, box-shadow .15s; } }
 /* 정산 캘린더 (정산별 타임라인 카드) */
-.tl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.tl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; align-items: start; }
 .tl-card { border: 1px solid var(--line); border-top: 4px solid var(--c); border-radius: 16px; padding: 14px 16px; display: grid; gap: 10px; align-content: start; min-width: 0; }
 .tl-card header { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .tl-cyc { margin-left: auto; font-size: 14px; }
@@ -279,6 +279,33 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 .tl-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .tl-edit input { padding: 4px 6px; border: 1.5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font-size: 13px; }
 .tl-tools { gap: 6px; flex-wrap: wrap; }
+.cal-nav { align-items: center; gap: 8px; flex-wrap: wrap; }
+.cal-title { font-size: 17px; min-width: 110px; text-align: center; }
+.mo-yg { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; padding: 12px 14px; border-radius: 14px; background: var(--bad-bg); color: var(--bad); }
+.mo-yg span { font-size: 13px; color: var(--ink); }
+.mo-order { border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
+.mo-order h3 { margin: 0 0 8px; font-size: 15px; }
+.mo-order ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.mo-row { display: grid; grid-template-columns: 88px auto 1fr auto; gap: 8px; align-items: center; padding: 6px 4px; border-bottom: 1px dashed var(--line-2); font-size: 13.5px; }
+.mo-row:last-child { border-bottom: 0; }
+.mo-row.done { opacity: .45; } .mo-row.done .mo-t { text-decoration: line-through; }
+.mo-row.late .mo-dd { color: var(--bad); }
+.mo-dd { font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--ink-2); }
+.tl-step { grid-template-columns: 26px 1fr !important; }
+.tl-step:not(:last-child)::before { left: 12px !important; top: 26px !important; }
+.tl-chk { position: relative; z-index: 1; cursor: pointer; }
+.tl-chk input { position: absolute; opacity: 0; width: 0; height: 0; }
+.tl-chk span { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--c); background: var(--sheet); display: grid; place-items: center; font-size: 12px; font-weight: 800; color: var(--c); }
+.tl-chk input:checked + span { background: var(--c); color: #fff; font-size: 0; }
+.tl-chk input:checked + span::after { content: '✓'; font-size: 13px; }
+.tl-chk input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tl-step.done .tl-t { text-decoration: line-through; }
+.tl-step.late .tl-dd { color: var(--bad); }
+.tl-card.empty { opacity: .75; }
+.tl-none { margin: 0; }
+.tl-step input[type=date] { padding: 4px 6px; border: 1.5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font-size: 13px; }
+@media (max-width: 640px) { .mo-row { grid-template-columns: 70px 1fr auto; } .mo-row .cal-tag { grid-column: 2; grid-row: 1; justify-self: start; } .mo-row .mo-t { grid-column: 1 / -1; } .mo-row .mo-dd { grid-column: 3; grid-row: 1; } }
+
 </style>
 </head>
 <body class="locked">
@@ -335,18 +362,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261112d"></script>
-<script src="calendar.js?v=20261112d"></script>
+<script src="config.js?v=20261112e"></script>
+<script src="calendar.js?v=20261112e"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261112d"></script>
-<script src="tracks/truz.js?v=20261112d"></script>
-<script src="tracks/thegirls.js?v=20261112d"></script>
-<script src="tracks/line.js?v=20261112d"></script>
-<script src="tracks/ygp.js?v=20261112d"></script>
-<script src="tracks/bptg.js?v=20261112d"></script>
+<script src="tracks/truz-review.js?v=20261112e"></script>
+<script src="tracks/truz.js?v=20261112e"></script>
+<script src="tracks/thegirls.js?v=20261112e"></script>
+<script src="tracks/line.js?v=20261112e"></script>
+<script src="tracks/ygp.js?v=20261112e"></script>
+<script src="tracks/bptg.js?v=20261112e"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };

@@ -39,10 +39,29 @@
       } }
   ];
 
-  // 날짜 직접 수정: 회차별 단계 날짜를 이 브라우저에 저장(localStorage). 키 = 정산id|회차|단계번호
-  var OVK = 'desk.cal.ov';
-  function loadOv() { try { return JSON.parse(localStorage.getItem(OVK) || '{}') || {}; } catch (e) { return {}; } }
-  function saveOv(o) { try { localStorage.setItem(OVK, JSON.stringify(o)); return true; } catch (e) { return false; } }
+  // 날짜 직접 수정: DB 시트 "CAL_일정" 탭에 저장(서버 calendar / saveCalendar). 키 = 정산id|회차|단계번호
+  // 브라우저에는 화면을 바로 그리기 위한 사본만 둔다. 서버에 저장 기능이 아직 배포되지 않았으면 이 브라우저에만 저장한다
+  var OVK = 'desk.cal.ov', OV = null, SRV = null, API = null, ROOT = null, MSG = '';
+  function loadOv() { if (OV) return OV; try { OV = JSON.parse(localStorage.getItem(OVK) || '{}') || {}; } catch (e) { OV = {}; } return OV; }
+  function cacheOv(o) { OV = o || {}; try { localStorage.setItem(OVK, JSON.stringify(OV)); } catch (e) { } }
+  function sync() {
+    if (!API || !API.get) { SRV = false; return; }
+    API.get({ section: 'calendar' }).then(function (j) {
+      var local = loadOv(), keys = Object.keys(local).filter(function (k) { return !j.ov[k]; });
+      SRV = true; cacheOv(j.ov); if (ROOT) render(ROOT);
+      // 서버 배포 전에 이 브라우저에만 저장했던 수정분은 한 번 서버로 옮긴다
+      if (keys.length) API.post('saveCalendar', { items: keys.map(function (k) { return { key: k, d: local[k].d, end: local[k].end }; }) }).then(function (r) { cacheOv(r.ov); if (ROOT) render(ROOT); }, function () { });
+    }, function () { SRV = false; if (ROOT) render(ROOT); });
+  }
+  function persist(items, remove) {
+    var o = Object.assign({}, loadOv());
+    remove.forEach(function (p) { Object.keys(o).forEach(function (k) { if (k.indexOf(p) === 0) delete o[k]; }); });
+    items.forEach(function (it) { o[it.key] = { d: it.d }; if (it.end) o[it.key].end = it.end; });
+    cacheOv(o);
+    if (!SRV) { MSG = '서버 저장 기능이 아직 배포되지 않아 이 브라우저에만 저장했습니다 (Code.gs 재배포 후 자동으로 DB 시트로 옮겨집니다)'; return Promise.resolve(); }
+    MSG = 'DB 시트에 저장 중…';
+    return API.post('saveCalendar', { items: items, remove: remove }).then(function (r) { cacheOv(r.ov); MSG = 'DB 시트(CAL_일정)에 저장했습니다'; }, function (e) { MSG = 'DB 시트 저장 실패 — 이 브라우저에만 저장됨 (' + e.message + ')'; });
+  }
   var iso = function (d) { return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate(); };
   var fromIso = function (v) { var t = String(v || '').split('-'); return t.length === 3 ? day(+t[0], +t[1], +t[2]) : null; };
   function applyOv(c, cy, ov) {
@@ -68,6 +87,7 @@
 
   var EDIT = null;   // 편집 중인 정산 id
   function render(root) {
+    ROOT = root;
     var T = today0();
     var cards = CYCLES.map(function (c) {
       var r = cyclesFor(c, T), cy = r.cur, nextMarked = false, prevD = null, ed = EDIT === c.id;
@@ -77,7 +97,7 @@
         var isNext = !done && !nextMarked; if (isNext) nextMarked = true;
         var when = s.d ? md(s.d) + (s.end ? ' ~ ' + md(s.end) : '') : '이어서';
         var dateHtml = ed && s.d
-          ? '<span class="tl-edit"><input type="date" data-i="' + i + '" data-k="d" value="' + iso(s.d) + '">' + (s.end ? ' ~ <input type="date" data-i="' + i + '" data-k="end" value="' + iso(s.end) + '">' : '') + '</span>'
+          ? '<span class="tl-edit"><input type="date" data-i="' + i + '" data-k="d" data-def="' + iso(s.d0 || s.d) + '" value="' + iso(s.d) + '">' + (s.end ? ' ~ <input type="date" data-i="' + i + '" data-k="end" data-def="' + iso(s.end0 || s.end) + '" value="' + iso(s.end) + '">' : '') + '</span>'
           : '<b class="tl-date">' + esc(when) + '</b>' + (s.ov ? '<span class="tl-ov" title="기본 ' + esc(md(s.d0) + (s.end0 ? ' ~ ' + md(s.end0) : '')) + '">수정됨</span>' : '');
         return '<li class="tl-step' + (done ? ' done' : '') + (isNext ? ' next' : '') + '"><span class="tl-dot"></span><div class="tl-body">' +
           '<div class="tl-top">' + dateHtml + (s.d && !ed ? '<span class="tl-dd">' + (done ? '지남' : dlab(s.d <= T && s.end ? T : s.d, T)) + '</span>' : '') + '</div>' +
@@ -94,29 +114,33 @@
         (nx ? '<p class="small muted tl-nx">다음 회차 ' + esc(r.next.label) + ': ' + esc(md(nx.d)) + ' ' + esc(nx.t) + '</p>' : '') + '</article>';
     }).join('');
     root.innerHTML =
-      '<div class="ph"><h2>정산 캘린더</h2><p>정산별 이번 회차 절차와 마감일입니다. 색으로 강조된 단계가 다음에 할 일입니다. 마감일이 토·일이면 직전 금요일로 당겨 표시합니다(공휴일 미반영). "날짜 수정"으로 이번 회차 날짜를 직접 바꿀 수 있고, 수정한 날짜는 이 브라우저에 저장됩니다. 기준일 ' + esc(md(T)) + '</p></div>' +
+      '<div class="ph"><h2>정산 캘린더</h2><p>정산별 이번 회차 절차와 마감일입니다. 색으로 강조된 단계가 다음에 할 일입니다. 마감일이 토·일이면 직전 금요일로 당겨 표시합니다(공휴일 미반영). "날짜 수정"으로 이번 회차 날짜를 직접 바꿀 수 있고, 수정한 날짜는 DB 시트(CAL_일정)에 저장되어 어느 기기에서나 같게 보입니다. 기준일 ' + esc(md(T)) + '</p>' +
+        (MSG ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">' + esc(MSG) + '</p>' : SRV === false ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">서버 저장 기능 미배포 — 수정한 날짜는 이 브라우저에만 저장됩니다 (Code.gs 재배포 필요)</p>' : '') + '</div>' +
       '<div class="tl-grid">' + cards + '</div>';
     root.querySelectorAll('[data-edit]').forEach(function (b) { b.addEventListener('click', function () { EDIT = b.getAttribute('data-edit'); render(root); }); });
     root.querySelectorAll('[data-cancel]').forEach(function (b) { b.addEventListener('click', function () { EDIT = null; render(root); }); });
     root.querySelectorAll('[data-save]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var id = b.getAttribute('data-save'), cyc = b.getAttribute('data-cyc'), ov = loadOv(), card = b.closest('.tl-card'), bad = false;
+        var id = b.getAttribute('data-save'), cyc = b.getAttribute('data-cyc'), card = b.closest('.tl-card'), bad = false, by = {};
         card.querySelectorAll('input[type=date]').forEach(function (inp) {
           if (!inp.value) { bad = true; return; }
-          var k = id + '|' + cyc + '|' + inp.getAttribute('data-i'); ov[k] = ov[k] || {}; ov[k][inp.getAttribute('data-k')] = inp.value;
+          var k = id + '|' + cyc + '|' + inp.getAttribute('data-i'); by[k] = by[k] || { key: k, changed: false }; by[k][inp.getAttribute('data-k')] = inp.value;
+          if (inp.value !== inp.getAttribute('data-def')) by[k].changed = true;
         });
         if (bad) { alert('날짜를 모두 입력해 주세요'); return; }
-        if (!saveOv(ov)) alert('이 브라우저에서는 저장할 수 없습니다(사생활 보호 모드 등)');
-        EDIT = null; render(root);
+        // 기본 날짜와 같은 단계는 저장하지 않고(있으면 지움), 바꾼 단계만 저장한다
+        var keys = Object.keys(by), items = keys.filter(function (k) { return by[k].changed; }).map(function (k) { return { key: k, d: by[k].d, end: by[k].end }; });
+        var rm = keys.filter(function (k) { return !by[k].changed && loadOv()[k]; });
+        EDIT = null; if (!items.length && !rm.length) { render(root); return; }
+        persist(items, rm).then(function () { render(root); }); render(root);
       });
     });
     root.querySelectorAll('[data-reset]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var pre = b.getAttribute('data-reset') + '|' + b.getAttribute('data-cyc') + '|', ov = loadOv();
-        Object.keys(ov).forEach(function (k) { if (k.indexOf(pre) === 0) delete ov[k]; });
-        saveOv(ov); EDIT = null; render(root);
+        var pre = b.getAttribute('data-reset') + '|' + b.getAttribute('data-cyc') + '|';
+        EDIT = null; persist([], [pre]).then(function () { render(root); }); render(root);
       });
     });
   }
-  window.DESK_CAL = { render: render, cycles: CYCLES, cyclesFor: cyclesFor };
+  window.DESK_CAL = { render: function (root, api) { if (api && !API) { API = api; sync(); } else if (api && SRV === false) sync(); render(root); }, cycles: CYCLES, cyclesFor: cyclesFor };
 })();

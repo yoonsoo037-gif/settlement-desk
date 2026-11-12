@@ -288,7 +288,7 @@ function mount(ctx) {
     navigator.clipboard.writeText(text).then(function () { ctx.toast((label || '') + ' 복사했습니다'); }, function () { showFallback(text); });
   }
   function copyTable(t) {
-    var html = '<table border="1" style="border-collapse:collapse">' + tableHtml(t).replace(/ class="[^"]*"/g, '') + '</table>';
+    var html = '<table border="1" style="border-collapse:collapse">' + tableHtml(t).replace(/ class="[^"]*"/g, '').replace(/<th>/g, '<th style="background-color:#D9D9D9;font-weight:bold;text-align:center">') + '</table>';
     try {
       if (window.ClipboardItem && navigator.clipboard.write) {
         navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([tsv(t)], { type: 'text/plain' }) })])

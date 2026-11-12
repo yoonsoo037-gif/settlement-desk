@@ -6,7 +6,7 @@
  * 처리하므로 이 스크립트로 보내지지 않는다. 공개 저장소에는 회사 데이터가 없고, 데이터는 전부 이 스크립트가
  * 읽는 비공개 시트에만 있다.
  * 회사 PC에서 브라우저 업로드가 막힌 경우를 위해, 내 드라이브의 엑셀 원본(.xlsx/.xls)을 목록으로 보여주고
- * 고른 파일 내용을 내려준다(files / file). 폴더를 따라 들어가며 고를 수 있게 폴더별 하위 폴더·엑셀 목록도 내려준다(folder). 엑셀 파일(.xlsx/.xls/.xlsb)만 대상이며 다른 형식은 거절한다.
+ * 고른 파일 내용을 내려준다(files / file). 정산 캘린더에서 직접 고친 날짜는 CAL_일정 탭에 저장한다(calendar / saveCalendar). 폴더를 따라 들어가며 고를 수 있게 폴더별 하위 폴더·엑셀 목록도 내려준다(folder). 엑셀 파일(.xlsx/.xls/.xlsb)만 대상이며 다른 형식은 거절한다.
  *
  * DB 시트 탭 규칙: <트랙코드>_매핑 / <트랙코드>_이력 / <트랙코드>_확정 / <트랙코드>_설정 (예: TRUZ_매핑)
  * 새 트랙을 추가할 때는 TRACKS 에 한 줄 추가하고 같은 이름 규칙으로 탭 4개를 만든다.
@@ -47,6 +47,7 @@ function doGet(e) {
     if (p.section === 'files') return out_(listFiles_(p.q));
     if (p.section === 'file') return out_(getFile_(p.id));
     if (p.section === 'folder') return out_(listFolder_(p.id));
+    if (p.section === 'calendar') return out_(getCalendar_());
     return out_({ ok: false, error: 'unknown_section' });
   } catch (err) {
     return out_({ ok: false, error: 'server_error', message: String(err) });
@@ -63,6 +64,7 @@ function doPost(e) {
   try {
     if (body.section === 'saveMapping') return out_(saveMapping_(body.track, body.items || []));
     if (body.section === 'saveQuarter') return out_(saveQuarter_(body.track, body.record || {}));
+    if (body.section === 'saveCalendar') return out_(saveCalendar_(body.items || [], body.remove || []));
     return out_({ ok: false, error: 'unknown_section' });
   } catch (err) {
     return out_({ ok: false, error: 'server_error', message: String(err) });
@@ -121,6 +123,39 @@ function saveQuarter_(track, r) {
   if (hat > 0) hs.getRange(hat, 2, 1, 2).setValues([[r.supply, '사이트 확정 저장']]);
   else hs.appendRow([r.quarter, r.supply, '사이트 확정 저장']);
   return { ok: true };
+}
+
+// ---------- 정산 캘린더 날짜 수정 (CAL_일정 탭: 키 | 시작일 | 종료일 | 수정일시) ----------
+// 키 = 정산id|회차|단계번호 (예: ygp|11월분 (12월 정산)|0). 탭이 없으면 처음 저장할 때 만든다
+function calSheet_() {
+  var ss = db_(), sh = ss.getSheetByName('CAL_일정');
+  if (!sh) { sh = ss.insertSheet('CAL_일정'); sh.appendRow(['키', '시작일', '종료일', '수정일시']); sh.getRange('B:C').setNumberFormat('@'); }
+  return sh;
+}
+function getCalendar_() {
+  var sh = db_().getSheetByName('CAL_일정'), ov = {};
+  if (sh) {
+    var v = sh.getDataRange().getValues();
+    for (var i = 1; i < v.length; i++) if (v[i][0]) { var o = { d: String(v[i][1] || '') }; if (v[i][2]) o.end = String(v[i][2]); ov[String(v[i][0])] = o; }
+  }
+  return { ok: true, ov: ov };
+}
+// items: [{key, d, end}] 추가·갱신 / remove: 키 접두어(이 회차 기본값으로) 삭제
+function saveCalendar_(items, remove) {
+  var sh = calSheet_(), now = Utilities.formatDate(new Date(), 'Asia/Seoul', 'yyyy-MM-dd HH:mm');
+  var v = sh.getDataRange().getValues();
+  for (var i = v.length - 1; i >= 1; i--) {
+    var k = String(v[i][0] || '');
+    if (remove.some(function (p) { return p && k.indexOf(String(p)) === 0; })) sh.deleteRow(i + 1);
+  }
+  v = sh.getDataRange().getValues(); var idx = {};
+  for (var j = 1; j < v.length; j++) idx[String(v[j][0])] = j + 1;
+  items.forEach(function (it) {
+    if (!it.key || !/^\d{4}-\d{2}-\d{2}$/.test(String(it.d || ''))) return;
+    var row = [String(it.key), String(it.d), it.end ? String(it.end) : '', now];
+    if (idx[it.key]) sh.getRange(idx[it.key], 1, 1, 4).setValues([row]); else { sh.appendRow(row); idx[it.key] = sh.getLastRow(); }
+  });
+  return getCalendar_();
 }
 
 // ---------- 드라이브 엑셀 원본 (업로드가 막힌 PC용) ----------

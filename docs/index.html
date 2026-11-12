@@ -335,18 +335,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261112b"></script>
-<script src="calendar.js?v=20261112b"></script>
+<script src="config.js?v=20261112d"></script>
+<script src="calendar.js?v=20261112d"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261112b"></script>
-<script src="tracks/truz.js?v=20261112b"></script>
-<script src="tracks/thegirls.js?v=20261112b"></script>
-<script src="tracks/line.js?v=20261112b"></script>
-<script src="tracks/ygp.js?v=20261112b"></script>
-<script src="tracks/bptg.js?v=20261112b"></script>
+<script src="tracks/truz-review.js?v=20261112d"></script>
+<script src="tracks/truz.js?v=20261112d"></script>
+<script src="tracks/thegirls.js?v=20261112d"></script>
+<script src="tracks/line.js?v=20261112d"></script>
+<script src="tracks/ygp.js?v=20261112d"></script>
+<script src="tracks/bptg.js?v=20261112d"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
@@ -399,7 +399,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     $('tabsSlot').querySelectorAll('[data-home]').forEach(function (b) { b.addEventListener('click', function () { homeTab(b.getAttribute('data-home')); }); });
     $('home').hidden = t === 'cal'; $('calendar').hidden = t !== 'cal';
     $('trackDesc').textContent = t === 'cal' ? '정산 캘린더' : '정산 계산기';
-    if (t === 'cal' && window.DESK_CAL) DESK_CAL.render($('calendar'));
+    if (t === 'cal' && window.DESK_CAL) DESK_CAL.render($('calendar'), { get: get, post: poster('cal') });
   }
   function goHome() {
     current = null;
@@ -588,6 +588,7 @@ window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks
     try {
       await get({ section: 'ping' });
       $('gate').hidden = true; document.body.classList.remove('locked');
+      if (!$('calendar').hidden && window.DESK_CAL) DESK_CAL.render($('calendar'), { get: get, post: poster('cal') });
     } catch (e) {
       setPw(''); $('gateMsg').textContent = e.message || '서버에 연결하지 못했습니다';
     } finally { $('gateBtn').disabled = false; }

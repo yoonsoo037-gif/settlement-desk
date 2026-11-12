@@ -32,6 +32,8 @@
   var iso = function (d) { return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate(); };
   var fromIso = function (v) { var t = String(v || '').split('-'); return t.length === 3 ? day(+t[0], +t[1], +t[2]) : null; };
   var today0 = function () { var t = new Date(); return day(t.getFullYear(), t.getMonth() + 1, t.getDate()); };
+  // 보류 중인 정산(캘린더에서 숨김). 다시 보이려면 해당 줄을 지운다
+  var HOLD = { line: 'LINE 프리미엄 — 26.11 기준 정산 사실상 종료로 보류' };
   var MEMO_LINE = 'LINE 프리미엄 판매 종료(26년 8월말) — 이후에는 잔여 매출 Note of Payment가 온 달만 진행';
   var MEMO_BPTG = '테이크원 계약 종료(정산 대상 판매월 26년 5월까지, 25.4Q~26.2Q 품의로 정산 완료) — 잔여 매출이 생길 때만 진행. 일정은 참고용';
 
@@ -97,7 +99,7 @@
       { t: '인보이스 받자마자 매입품의 상신 → ERP 사업소득(원천세) 입력', n: '이 달 YG 품의 마감(' + dl.text + ')에 맞추도록 노력 · 넘기면 회계팀에 지연 공유 · 지급예정일은 둘째 주 목요일 기준' }]; }
     else { w.tasks = []; var nm2 = m < 7 ? 7 : 13; w.nextHint = md(prevBiz(day(y, nm2, 15))) + ' 회계팀에 ' + (m < 7 ? hf(y, 6) : hf(y, 12)) + ' 음원 매출 데이터 요청'; }
     out.push(w);
-    return { dl: dl, projects: out };
+    return { dl: dl, projects: out.filter(function (p) { return !HOLD[p.id]; }) };
   }
 
   // ---------- 저장(DB 시트 CAL_일정) ----------

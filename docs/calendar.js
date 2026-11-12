@@ -1,6 +1,6 @@
 /* 정산 캘린더 — 월별 할 일: 선택한 달에 정산 프로젝트별로 "언제 · 무엇을 · 어떤 순서로" 해야 하는지 보여 준다.
  * - 맨 위: 이 달 YG 품의 마감일(공통) + 이 달 전체 할 일 순서(날짜순)
- * - 아래: 프로젝트별 카드(YGP · TRUZ · BPTG 테이크원)에 할 일 ①②③ 순서, 날짜, D-day, 완료 체크
+ * - 아래: 프로젝트별 카드(YGP · TRUZ · BPTG 테이크원 · LINE 프리미엄 · THE GIRLS 작가)에 할 일 ①②③ 순서, 날짜, D-day, 완료 체크
  * 규칙은 TASKS 한 곳에 모은다. 마감일이 토·일·빨간날(HOLI 목록)이면 직전 영업일로 당긴다.
  * 완료 체크·날짜 수정·담당자 이름은 DB 시트 "CAL_일정" 탭에 저장한다(키: done|… / 프로젝트|YYYY-MM|번호 / cfg|acct). */
 (function () {
@@ -32,6 +32,7 @@
   var iso = function (d) { return d.getFullYear() + '-' + (d.getMonth() < 9 ? '0' : '') + (d.getMonth() + 1) + '-' + (d.getDate() < 10 ? '0' : '') + d.getDate(); };
   var fromIso = function (v) { var t = String(v || '').split('-'); return t.length === 3 ? day(+t[0], +t[1], +t[2]) : null; };
   var today0 = function () { var t = new Date(); return day(t.getFullYear(), t.getMonth() + 1, t.getDate()); };
+  var MEMO_LINE = 'LINE 프리미엄 판매 종료(26년 8월말) — 이후에는 잔여 매출 Note of Payment가 온 달만 진행';
   var MEMO_BPTG = '테이크원 계약 종료(정산 대상 판매월 26년 5월까지, 25.4Q~26.2Q 품의로 정산 완료) — 잔여 매출이 생길 때만 진행. 일정은 참고용';
 
   // YG 품의 마감일: 매월 3~5일(주말·공휴일 제외). before = 마감 시작 전 영업일(지연 공유·품의 상신 기한)
@@ -78,6 +79,24 @@
       { d: dl.before, t: '매입품의 상신 — YG 품의 마감 전', n: '세금계산서 작성일을 거래일자로 입력' }]; }
     else { b.tasks = []; b.nextHint = md(prevBiz(day(y, m + 1, 15))) + ' 회계팀에 ' + qLabel(y, m + 1) + ' 데이터 요청'; }
     out.push(b);
+    // LINE 프리미엄 — 매월: 중순 LINE 자동 메일(Note of Payment)로 전월분 정산서 수령 → 인보이스일 환율 → 품의·ERP (인수인계: "라인은 매월 중순에 자동 메일로 옴")
+    var ndl = ygDeadline(day(y, m + 1, 1).getFullYear(), day(y, m + 1, 1).getMonth() + 1);
+    out.push({ id: 'line', name: 'LINE 프리미엄', sub: 'LY Corporation · JPY · 매월', color: '#1f9d55', bg: '#e3f6ea', memo: MEMO_LINE, label: pm + '월분 정산', tasks: [
+      { d: prevBiz(day(y, m, 15)), t: 'LINE Note of Payment(' + pm + '월분) 자동 메일 수령 확인', n: '매월 중순 자동 메일로 옴 — 안 오면 LINE 측에 확인' },
+      { t: '인보이스 발행일 JPY100 환율 확인 → 정산 계산기 LINE 메뉴에 입력', n: '서울외국환중개 매매기준율' },
+      { t: '매출품의 상신 → ERP AR 업로드', n: '받자마자 처리 권장 · 늦어도 다음 달 YG 품의 마감(' + ndl.text + ') 전' }] });
+    // THE GIRLS 해외 작가 — 반기: 1·7월 회계팀 음원 매출 데이터 → Royalty Report·인보이스 요청 / 2·8월 인보이스 수령 → 매입품의 (26.1H 품의 26-0600: 인보이스 8/1, 지급 9/30)
+    var w = { id: 'tgw', name: 'THE GIRLS 작가', sub: 'PATRIOT · LINDGREN · USD · 반기', color: '#c0569a', bg: '#fbe8f3' };
+    var hf = function (yy, mm) { return String(yy).slice(2) + '년 ' + (mm <= 6 ? '상반기' : '하반기'); };
+    if (m === 1 || m === 7) { var hl = m === 7 ? hf(y, 6) : hf(y - 1, 12); w.label = hl + ' 정산'; w.tasks = [
+      { d: prevBiz(day(y, m, 15)), t: '회계팀에 ' + hl + ' THE GIRLS 음원 매출 데이터 요청 (중순)', n: '테이크원 분기 정산과 같은 데이터' },
+      { t: '반기 말일 환율 확인 → 작가별 Royalty Report 생성(정산 계산기 THE GIRLS · 해외 작가)', n: m === 7 ? '6/30 서울외국환중개 USD 매매기준율' : '12/31 서울외국환중개 USD 매매기준율' },
+      { t: '작가 2곳에 Royalty Report 보내고 인보이스 발행 요청', n: '정산 계산기의 인보이스 요청 메일 사용' }]; }
+    else if (m === 2 || m === 8) { var hl2 = m === 8 ? hf(y, 6) : hf(y - 1, 12); w.label = hl2 + ' 정산'; w.tasks = [
+      { d: first, t: '작가 인보이스 2건 수령 확인', n: '못 받았으면 재요청 — 인보이스 작성일이 거래일자' },
+      { t: '매입품의 상신 (받는 즉시) → ERP 사업소득(원천세) 입력', n: '인보이스 작성월 기준 · 늦어도 다음 달 YG 품의 마감(' + ndl.text + ') 전 · 지급예정일은 둘째 주 목요일 기준' }]; }
+    else { w.tasks = []; var nm2 = m < 7 ? 7 : 13; w.nextHint = md(prevBiz(day(y, nm2, 15))) + ' 회계팀에 ' + (m < 7 ? hf(y, 6) : hf(y, 12)) + ' 음원 매출 데이터 요청'; }
+    out.push(w);
     return { dl: dl, projects: out };
   }
 

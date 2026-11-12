@@ -1,6 +1,6 @@
 /* 정산 캘린더 — 월별 할 일: 선택한 달에 정산 프로젝트별로 "언제 · 무엇을 · 어떤 순서로" 해야 하는지 보여 준다.
  * - 맨 위: 이 달 YG 품의 마감일(공통) + 이 달 전체 할 일 순서(날짜순)
- * - 아래: 프로젝트별 카드(YGP · TRUZ · BPTG 테이크원 · LINE 프리미엄 · THE GIRLS 작가)에 할 일 ①②③ 순서, 날짜, D-day, 완료 체크
+ * - 아래: 프로젝트별 카드(YGP · TRUZ · BPTG 테이크원 · BPTG 게임매출 · THE GIRLS 작가)에 할 일 ①②③ 순서, 날짜, D-day, 완료 체크
  * 규칙은 TASKS 한 곳에 모은다. 마감일이 토·일·빨간날(HOLI 목록)이면 직전 영업일로 당긴다.
  * 완료 체크·날짜 수정·담당자 이름은 DB 시트 "CAL_일정" 탭에 저장한다(키: done|… / 프로젝트|YYYY-MM|번호 / cfg|acct). */
 (function () {
@@ -34,6 +34,7 @@
   var today0 = function () { var t = new Date(); return day(t.getFullYear(), t.getMonth() + 1, t.getDate()); };
   // 보류 중인 정산(캘린더에서 숨김). 다시 보이려면 해당 줄을 지운다
   var HOLD = { line: 'LINE 프리미엄 — 26.11 기준 정산 사실상 종료로 보류' };
+  var MEMO_GAME = '게임 서비스·MD·유튜브 26.8.31 종료 — 3Q(9월은 음원 매출만) 이후에는 잔여 매출 정산서가 올 때만 진행';
   var MEMO_LINE = 'LINE 프리미엄 판매 종료(26년 8월말) — 이후에는 잔여 매출 Note of Payment가 온 달만 진행';
   var MEMO_BPTG = '테이크원 계약 종료(정산 대상 판매월 26년 5월까지, 25.4Q~26.2Q 품의로 정산 완료) — 잔여 매출이 생길 때만 진행. 일정은 참고용';
 
@@ -50,6 +51,7 @@
   // 프로젝트별 그 달 할 일 (순서대로). d 가 없는 할 일은 "앞 단계 직후"
   function TASKS(y, m, acct) {
     var Y = day(y, m, 1); y = Y.getFullYear(); m = Y.getMonth() + 1;
+    var ndl = ygDeadline(day(y, m + 1, 1).getFullYear(), day(y, m + 1, 1).getMonth() + 1);
     var dl = ygDeadline(y, m), pm = m === 1 ? 12 : m - 1, ph = phase(m), first = nextBiz(day(y, m, 1)), r9 = prevBiz(day(y, m, 9));
     var who = acct || '회계팀 담당';
     var out = [];
@@ -81,8 +83,18 @@
       { d: dl.end, t: '매입품의 상신 — YG 품의 마감(' + dl.text + ') 내', n: '세금계산서 작성일을 거래일자로 입력 (25.4Q~26.2Q: 7/31 세금계산서 → 8/4 기안)' }]; }
     else { b.tasks = []; b.nextHint = md(prevBiz(day(y, m + 1, 15))) + ' 회계팀에 ' + qLabel(y, m + 1) + ' 데이터 요청'; }
     out.push(b);
+    // BPTG 게임매출 — 분기(매출): 테이크원 월별 정산서가 약 2달 뒤 중순에 옴(26.2Q: 4월분 6/16 · 5월분 7/16 · 6월분 8/18)
+    // 세금계산서 거래일자 = 분기 마지막 달 + 2개월 1일, 품의는 마지막 달 정산서 받은 직후(26.2Q 8/18 기안) → 늦어도 다음 달 YG 품의 마감 내
+    var g = { id: 'game', name: 'BPTG 게임매출', sub: '테이크원 → YG · 로열티 23% · 분기', color: '#d97706', bg: '#fdf0dc', memo: MEMO_GAME };
+    if (ph === 2) { var gl = qLabel(y, m - 1); g.label = gl + ' 정산'; g.tasks = [
+      { d: prevBiz(day(y, m, 15)), t: '테이크원에서 ' + gl + ' 마지막 달 정산서(엑셀·공문 PDF) 수령 확인 (중순)', n: '앞 두 달 정산서도 최신본인지 확인 — 지난달 숫자를 고쳐 보내는 경우 있음' },
+      { t: '받자마자 3개월 정산서 함께 올려 매출품의 상신 → ERP AR', n: '정산 계산기 BPTG 게임매출 메뉴 · 거래일자 ' + m + '/1 · 입금예정일 다음 달 말일 · 늦어도 다음 달 YG 품의 마감(' + ndl.text + ') 내' }]; }
+    else if (ph === 3) { var gl3 = qLabel(y, m - 2); g.label = gl3 + ' 정산'; g.tasks = [
+      { d: pre, t: gl3 + ' 매출품의 상신 여부 확인', n: '지난달에 끝냈으면 완료 체크' },
+      { d: dl.end, t: '(아직이면) 매출품의 상신 — YG 품의 마감(' + dl.text + ') 내', n: '정산서가 늦어지면 마감 전에 ' + who + '께 공유' }]; }
+    else { g.tasks = []; var gn = ph === 1 ? m + 1 : m; g.nextHint = md(prevBiz(day(y, gn, 15))) + ' 테이크원 ' + qLabel(y, gn - 1) + ' 마지막 달 정산서 수령 확인'; }
+    out.push(g);
     // LINE 프리미엄 — 매월: 중순 LINE 자동 메일(Note of Payment)로 전월분 정산서 수령 → 인보이스일 환율 → 품의·ERP (인수인계: "라인은 매월 중순에 자동 메일로 옴")
-    var ndl = ygDeadline(day(y, m + 1, 1).getFullYear(), day(y, m + 1, 1).getMonth() + 1);
     out.push({ id: 'line', name: 'LINE 프리미엄', sub: 'LY Corporation · JPY · 매월', color: '#1f9d55', bg: '#e3f6ea', memo: MEMO_LINE, label: pm + '월분 정산', tasks: [
       { d: prevBiz(day(y, m, 15)), t: 'LINE Note of Payment(' + pm + '월분) 자동 메일 수령 확인', n: '매월 중순 자동 메일로 옴 — 안 오면 LINE 측에 확인' },
       { t: '인보이스 발행일 JPY100 환율 확인 → 정산 계산기 LINE 메뉴에 입력', n: '서울외국환중개 매매기준율' },

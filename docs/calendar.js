@@ -164,9 +164,10 @@
     R2.projects.forEach(function (p) { p.tasks.forEach(function (t, i) { if (t.d && t.d.getMonth() === m - 1 && t.d.getFullYear() === y) all.push({ p: p, t: t, i: i, ahead: nm.getMonth() + 1 }); }); });
     R = monthData(y, m);
     all.sort(function (a, b) { return (a.t.when - b.t.when) || (a.p.id === b.p.id ? a.i - b.i : 0); });
+    var pastOpen = all.filter(function (x) { return !x.t.done && x.t.when && x.t.when < T; });
     var order = all.map(function (x) {
       var late = !x.t.done && x.t.when && x.t.when < T;
-      return '<li class="mo-row' + (x.t.done ? ' done' : '') + (late ? ' late' : '') + '"><b class="mo-d">' + (x.t.d ? esc(md(x.t.d)) : '이어서') + '</b><span class="cal-tag" style="--c:' + x.p.color + ';--cb:' + x.p.bg + '">' + esc(x.p.name) + '</span><span class="mo-t">' + esc(x.t.t) + (x.ahead ? ' <small class="muted">(' + x.ahead + '월 마감 대비 · ' + x.ahead + '월 카드에서 체크)</small>' : '') + '</span>' +
+      return '<li class="mo-row' + (x.t.done ? ' done' : '') + (late ? ' late' : '') + '"><label class="mo-chk" title="완료 체크 — 아래 카드에도 함께 반영"><input type="checkbox" data-done="' + esc(x.t.k) + '"' + (x.t.done ? ' checked' : '') + '><span></span></label><b class="mo-d">' + (x.t.d ? esc(md(x.t.d)) : '이어서') + '</b><span class="cal-tag" style="--c:' + x.p.color + ';--cb:' + x.p.bg + '">' + esc(x.p.name) + '</span><span class="mo-t">' + esc(x.t.t) + (x.ahead ? ' <small class="muted">(' + x.ahead + '월 마감 대비 · ' + x.ahead + '월 카드에서 체크)</small>' : '') + '</span>' +
         '<span class="mo-dd">' + (x.t.done ? '완료' : late ? '지연 ' + esc(dlab(x.t.when, T)) : x.t.d ? esc(dlab(x.t.d, T)) : '') + '</span></li>';
     }).join('');
     var cards = R.projects.map(function (p) {
@@ -189,12 +190,12 @@
         (p.memo && p.tasks.length ? '<p class="tl-memo small">※ ' + esc(p.memo) + '</p>' : '') + '</article>';
     }).join('');
     root.innerHTML =
-      '<div class="ph"><h2>정산 캘린더 · 월별 할 일</h2><p>선택한 달에 무엇을 어떤 순서로 해야 하는지 정산별로 보여 줍니다. 끝낸 일은 번호를 눌러 완료 체크하세요(DB 시트에 저장). 마감일이 주말·공휴일이면 직전 영업일로 당깁니다(2026~2028년 빨간날 반영).</p>' +
+      '<div class="ph"><h2>정산 캘린더 · 월별 할 일</h2><p>선택한 달에 무엇을 어떤 순서로 해야 하는지 정산별로 보여 줍니다. 끝낸 일은 전체 순서 목록의 체크박스나 카드의 번호를 눌러 완료 체크하세요 — 한 번 체크하면 목록·카드에 함께 반영되고 DB 시트에 저장됩니다. 마감일이 주말·공휴일이면 직전 영업일로 당깁니다(2026~2028년 빨간날 반영).</p>' +
       (MSG ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">' + esc(MSG) + '</p>' : SRV === false ? '<p class="small" style="margin:6px 0 0;color:var(--warn)">서버에 연결되지 않아 완료 체크·날짜 수정이 이 브라우저에만 저장됩니다</p>' : '') + '</div>' +
       '<div class="row cal-nav"><button class="btn sm" data-mon="-1" type="button">◀ 이전 달</button><b class="cal-title">' + y + '년 ' + m + '월</b><button class="btn sm" data-mon="1" type="button">다음 달 ▶</button><button class="btn sm" data-mon="0" type="button">이번 달</button></div>' +
       '<div class="mo-yg"><b>YG 품의 마감일 ' + esc(dl.text) + '</b><span>전월 거래일자(세금계산서·인보이스 작성일) 건은 이 기간 안에 상신 · 늦어지는 정산은 마감 전 <b>' + esc(md(dl.before)) + '</b>까지 회계팀에 미리 공유</span>' +
         (hol.length ? '<span class="mo-hol">이 달 공휴일: ' + esc(hol.join(' · ')) + '</span>' : '') + '</div>' +
-      '<section class="mo-order"><h3>' + m + '월 전체 할 일 순서</h3><ol>' + order + '</ol></section>' +
+      '<section class="mo-order"><div class="row mo-head"><h3>' + m + '월 전체 할 일 순서</h3>' + (pastOpen.length ? '<button class="btn sm" data-bulk="1" type="button">지난 할 일 ' + pastOpen.length + '건 한 번에 완료</button>' : '') + '</div><ol>' + order + '</ol></section>' +
       '<div class="tl-grid">' + cards + '</div>';
     root.querySelectorAll('[data-mon]').forEach(function (b) {
       b.addEventListener('click', function () {
@@ -207,6 +208,12 @@
       c.addEventListener('change', function () {
         var k = 'done|' + c.getAttribute('data-done');
         (c.checked ? persist([{ key: k, d: iso(today0()) }], []) : persist([], [k])).then(function () { render(root); }); render(root);
+      });
+    });
+    root.querySelectorAll('[data-bulk]').forEach(function (bb) {
+      bb.addEventListener('click', function () {
+        if (!confirm('날짜가 지난 할 일 ' + pastOpen.length + '건을 모두 완료로 체크할까요?')) return;
+        persist(pastOpen.map(function (x) { return { key: 'done|' + x.t.k, d: iso(today0()) }; }), []).then(function () { render(root); }); render(root);
       });
     });
     root.querySelectorAll('[data-edit]').forEach(function (b) { b.addEventListener('click', function () { EDIT = b.getAttribute('data-edit'); render(root); }); });

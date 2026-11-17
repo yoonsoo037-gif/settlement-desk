@@ -285,11 +285,20 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 .mo-yg span { font-size: 13px; color: var(--ink); }
 .mo-yg .mo-hol { flex-basis: 100%; font-size: 12.5px; color: var(--ink-2); }
 .mo-order { border: 1px solid var(--line); border-radius: 16px; padding: 12px 14px; }
-.mo-order h3 { margin: 0 0 8px; font-size: 15px; }
+.mo-order h3 { margin: 0; font-size: 15px; }
+.mo-head { justify-content: space-between; align-items: center; margin-bottom: 8px; gap: 8px; flex-wrap: wrap; }
 .mo-order ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.mo-row { display: grid; grid-template-columns: 88px auto 1fr auto; gap: 8px; align-items: center; padding: 6px 4px; border-bottom: 1px dashed var(--line-2); font-size: 13.5px; }
+.mo-row { display: grid; grid-template-columns: 26px 88px auto 1fr auto; gap: 8px; align-items: center; padding: 6px 4px; border-bottom: 1px dashed var(--line-2); font-size: 13.5px; }
 .mo-row:last-child { border-bottom: 0; }
-.mo-row.done { opacity: .45; } .mo-row.done .mo-t { text-decoration: line-through; }
+.mo-chk { cursor: pointer; display: grid; place-items: center; }
+.mo-chk input { position: absolute; opacity: 0; width: 0; height: 0; }
+.mo-chk span { width: 20px; height: 20px; border-radius: 6px; border: 2px solid var(--line); background: var(--sheet); display: grid; place-items: center; }
+.mo-chk:hover span { border-color: var(--accent); }
+.mo-chk input:checked + span { background: var(--ok); border-color: var(--ok); }
+.mo-chk input:checked + span::after { content: '✓'; color: #fff; font-size: 13px; font-weight: 800; }
+.mo-chk input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.mo-row.done { opacity: 1; } .mo-row.done > :not(.mo-chk) { opacity: .45; }
+/* */ .mo-row.done .mo-t { text-decoration: line-through; }
 .mo-row.late .mo-dd { color: var(--bad); }
 .mo-dd { font-size: 12px; font-weight: 700; white-space: nowrap; color: var(--ink-2); }
 .tl-step { grid-template-columns: 26px 1fr !important; }
@@ -305,7 +314,7 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 .tl-card.empty { opacity: .75; }
 .tl-none { margin: 0; }
 .tl-step input[type=date] { padding: 4px 6px; border: 1.5px solid var(--c); border-radius: 8px; background: var(--sheet); color: var(--ink); font-size: 13px; }
-@media (max-width: 640px) { .mo-row { grid-template-columns: 70px 1fr auto; } .mo-row .cal-tag { grid-column: 2; grid-row: 1; justify-self: start; } .mo-row .mo-t { grid-column: 1 / -1; } .mo-row .mo-dd { grid-column: 3; grid-row: 1; } }
+@media (max-width: 640px) { .mo-row { grid-template-columns: 26px 70px 1fr auto; } .mo-row .cal-tag { grid-column: 3; grid-row: 1; justify-self: start; } .mo-row .mo-t { grid-column: 2 / -1; } .mo-row .mo-dd { grid-column: 4; grid-row: 1; } }
 
 </style>
 </head>
@@ -363,18 +372,18 @@ body.locked .top, body.locked .wrap { visibility: hidden; }
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script src="config.js?v=20261112n"></script>
-<script src="calendar.js?v=20261112n"></script>
+<script src="config.js?v=20261117b"></script>
+<script src="calendar.js?v=20261117b"></script>
 <script>
 // 정산 모듈 등록부: tracks/*.js 가 DESK.register 로 자신을 등록한다
 window.DESK = { tracks: [], register: function (m) { m.ready = true; this.tracks.push(m); } };
 </script>
-<script src="tracks/truz-review.js?v=20261112n"></script>
-<script src="tracks/truz.js?v=20261112n"></script>
-<script src="tracks/thegirls.js?v=20261112n"></script>
-<script src="tracks/line.js?v=20261112n"></script>
-<script src="tracks/ygp.js?v=20261112n"></script>
-<script src="tracks/bptg.js?v=20261112n"></script>
+<script src="tracks/truz-review.js?v=20261117b"></script>
+<script src="tracks/truz.js?v=20261117b"></script>
+<script src="tracks/thegirls.js?v=20261117b"></script>
+<script src="tracks/line.js?v=20261117b"></script>
+<script src="tracks/ygp.js?v=20261117b"></script>
+<script src="tracks/bptg.js?v=20261117b"></script>
 <script>
 (function () {
   var $ = function (id) { return document.getElementById(id); };
